@@ -35,7 +35,7 @@ public class Program
 
     private static bool _useJson;
 
-    private static readonly string GitRoot = ResolveGitRoot();
+    private static string GitRoot = null!;
     private static string CodeAuditDir = null!;
     private static string SemanticDir = null!;
     private static string DirtyFilePath = null!;
@@ -62,7 +62,8 @@ public class Program
             Console.Error.WriteLine("ERROR: --solution=path or INDEXER_SOLUTION_PATH is required and must point to an existing .sln file.");
             Environment.Exit(1);
         }
-        SolutionPath = solutionPathArg;
+        SolutionPath = Path.GetFullPath(solutionPathArg);
+        GitRoot = ResolveGitRoot(Path.GetDirectoryName(SolutionPath)!);
 
         var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
             ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
@@ -72,7 +73,7 @@ public class Program
             Environment.Exit(1);
         }
         var outputDir = Path.GetFullPath(outputDirArg);
-        CodeAuditDir = Path.Combine(outputDir, ".codeaudit");
+        CodeAuditDir = outputDir;
         SemanticDir = Path.Combine(CodeAuditDir, "semantic");
         DirtyFilePath = Path.Combine(CodeAuditDir, "dirty-files.json");
 
@@ -186,9 +187,9 @@ public class Program
         Directory.CreateDirectory(SemanticDir);
     }
 
-    private static string ResolveGitRoot()
+    private static string ResolveGitRoot(string startPath)
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        var dir = new DirectoryInfo(startPath);
         while (dir != null)
         {
             if (Directory.Exists(Path.Combine(dir.FullName, ".git")))
@@ -196,7 +197,7 @@ public class Program
             dir = dir.Parent;
         }
         throw new InvalidOperationException(
-            "Could not locate repository root (.git directory) from " + AppContext.BaseDirectory);
+            "Could not locate repository root (.git directory) from " + startPath);
     }
 
     private static void WriteProgress(string message)
