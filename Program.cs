@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Collections.Immutable;
 using System.Text.Json.Serialization;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
@@ -13,6 +14,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Rename;
 
 namespace RoslynIndexer;
 
@@ -47,6 +49,11 @@ record SymbolRecord(
         DateTime BuiltAtUtc
     );
 
+    record DiagnosticBaseline(int SchemaVersion, string CapturedAtUtc, string SolutionPath, List<DiagnosticEntry> Diagnostics);
+    record DiagnosticEntry(string ProjectName, string Id, string Severity, string Message, string File, int Line);
+
+    record ResolveCandidate(string MetadataName, string Kind, string Project, string File, int Line, int Score, string ScoreReason);
+
 public class Program
 {
     private const int SchemaVersion = 2;
@@ -56,6 +63,10 @@ public class Program
     private const string ProvenanceIndexerObserved = "indexer_observed";
     private const string ProvenanceCacheSuggests = "cache_suggests";
     private const string ProvenanceNotDeterminable = "not_determinable";
+
+    private const int HighIncomingDefaultThreshold = 5;
+    private const int CrossProjectMinCount = 2;
+    private const int HighOutgoingMinCount = 10;
 
     private static bool _useJson;
 
@@ -178,6 +189,105 @@ public class Program
                 case "verify-facts":
                     await VerifyFactsAsync();
                     break;
+                case "audit":
+                    await AuditModeAsync(args);
+                    break;
+
+                // ──── Phase 3 modes ────
+                case "resolve":
+                    var resolveSymbol = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
+                    if (string.IsNullOrEmpty(resolveSymbol))
+                    {
+                        if (_useJson)
+                            WriteJsonResult("resolve", new { error = "Missing required argument --symbol=<partial>" });
+                        else
+                            Console.WriteLine("Usage: --mode=resolve --symbol=<partial> [--json]");
+                    }
+                    else
+                    {
+                        var solution = await LoadSolutionAsync();
+                        var candidates = await ResolveSymbolAsync(solution, resolveSymbol);
+                        if (_useJson)
+                        {
+                            WriteJsonResult("resolve", new
+                            {
+                                query = resolveSymbol,
+                                totalCandidates = candidates.Count,
+                                candidates
+                            });
+                        }
+                        else
+                        {
+                            Console.WriteLine($"\nResolved {candidates.Count} candidate(s) for '{resolveSymbol}':");
+                            foreach (var c in candidates)
+                                Console.WriteLine($"  [{c.Score,3}] {c.MetadataName} ({c.Kind}) in {c.File}:{c.Line}");
+                        }
+                    }
+                    break;
+
+                case "check":
+                    {
+                        var checkSolution = await LoadSolutionAsync();
+                        var baselinePath = Path.Combine(CodeAuditDir, "baseline-diagnostics.json");
+                        var collectedDiags = await SaveBaselineAsync(checkSolution, baselinePath);
+                        var severityCounts = collectedDiags
+                            .GroupBy(d => d.Severity)
+                            .ToDictionary(g => g.Key, g => g.Count());
+                        if (_useJson)
+                        {
+                            WriteJsonResult("check", new
+                            {
+                                baselinePath = GetRelativePath(baselinePath),
+                                projectCount = checkSolution.Projects.Count(),
+                                diagnosticCount = collectedDiags.Count,
+                                severityCounts
+                            });
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Baseline saved: {collectedDiags.Count} diagnostic(s) across {checkSolution.Projects.Count()} project(s).");
+                            Console.WriteLine($"  Path: {GetRelativePath(baselinePath)}");
+                            foreach (var kv in severityCounts.OrderBy(k => k.Key))
+                                Console.WriteLine($"  {kv.Key}: {kv.Value}");
+                        }
+                    }
+                    break;
+
+                case "simulate-delete":
+                    var sdSymbol = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
+                    if (string.IsNullOrEmpty(sdSymbol))
+                    {
+                        if (_useJson)
+                            WriteJsonResult("simulate-delete", new { error = "Missing required argument --symbol=<FQN>" });
+                        else
+                            Console.WriteLine("Usage: --mode=simulate-delete --symbol=<FQN> [--json]");
+                    }
+                    else
+                    {
+                        await HandleSimulateDeleteAsync(sdSymbol);
+                    }
+                    break;
+
+                case "simulate-rename":
+                    var srSymbol = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
+                    var newName = args.FirstOrDefault(a => a.StartsWith("--new-name="))?.Split('=', 2)[1];
+                    if (string.IsNullOrEmpty(srSymbol) || string.IsNullOrEmpty(newName))
+                    {
+                        if (_useJson)
+                            WriteJsonResult("simulate-rename", new { error = "Missing required arguments --symbol=<FQN> --new-name=<SimpleName>" });
+                        else
+                            Console.WriteLine("Usage: --mode=simulate-rename --symbol=<FQN> --new-name=<SimpleName> [--json]");
+                    }
+                    else
+                    {
+                        await HandleSimulateRenameAsync(srSymbol, newName);
+                    }
+                    break;
+
+                case "prune":
+                    await HandlePruneAsync();
+                    break;
+
                 default:
                     Console.WriteLine("Required arguments:");
                     Console.WriteLine("  --solution=PATH      Path to the .sln file (or INDEXER_SOLUTION_PATH env var)");
@@ -195,6 +305,12 @@ public class Program
                     Console.WriteLine("  --mode=lint");
                     Console.WriteLine("  --mode=impact");
                     Console.WriteLine("  --mode=verify-facts [--json]");
+                    Console.WriteLine("  --mode=resolve --symbol=<partial> [--json]");
+                    Console.WriteLine("  --mode=check [--json]");
+                    Console.WriteLine("  --mode=simulate-delete --symbol=<FQN> [--json]");
+                    Console.WriteLine("  --mode=simulate-rename --symbol=<FQN> --new-name=<SimpleName> [--json]");
+                    Console.WriteLine("  --mode=prune [--json]");
+                    Console.WriteLine("  --mode=audit --check=dead-code|complexity-candidates|depth|redundancy|all [--project=<name>] [--min-incoming=N] [--json]");
                     break;
             }
         }
@@ -245,6 +361,597 @@ public class Program
         };
         var json = JsonSerializer.Serialize(envelope, JsonOptions);
         Console.WriteLine(json);
+    }
+
+    private static async Task AuditModeAsync(string[] args)
+    {
+        var checkArg = args.FirstOrDefault(a => a.StartsWith("--check="))?.Split('=', 2)[1];
+        var projectArg = args.FirstOrDefault(a => a.StartsWith("--project="))?.Split('=', 2)[1];
+        var minIncomingArg = args.FirstOrDefault(a => a.StartsWith("--min-incoming="))?.Split('=', 2)[1];
+
+        if (string.IsNullOrEmpty(checkArg))
+        {
+            Console.Error.WriteLine("ERROR: --check=<name> is required for --mode=audit.");
+            Environment.Exit(1);
+            return;
+        }
+
+        var validChecks = new[] { "dead-code", "complexity-candidates", "depth", "redundancy", "all" };
+        if (!validChecks.Contains(checkArg))
+        {
+            Console.Error.WriteLine($"ERROR: Invalid --check value '{checkArg}'. Valid values are: {string.Join(", ", validChecks)}");
+            Environment.Exit(1);
+            return;
+        }
+
+        int minIncoming = 0;
+        if (!string.IsNullOrEmpty(minIncomingArg) && !int.TryParse(minIncomingArg, out minIncoming))
+        {
+            Console.Error.WriteLine($"ERROR: Invalid --min-incoming value '{minIncomingArg}'. Must be an integer.");
+            Environment.Exit(1);
+            return;
+        }
+
+        Solution solution;
+        try
+        {
+            solution = await LoadSolutionAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"ERROR: Failed to load solution: {ex.Message}");
+            Environment.Exit(1);
+            return;
+        }
+
+        // Build the discovery snapshot once; check methods (4.1–4.4) will receive it.
+        var snapshot = await BuildDiscoverySnapshotAsync(solution);
+
+        object resultObject;
+        switch (checkArg)
+        {
+            case "dead-code":
+                var deadCodeFindings = await DeadCodeCheckAsync(snapshot, projectArg);
+                var deadBucket = deadCodeFindings.Count(f =>
+                    ((dynamic)f).bucket == "dead");
+                var testOnlyBucket = deadCodeFindings.Count(f =>
+                    ((dynamic)f).bucket == "test_only");
+                var notDeterminableBucket = deadCodeFindings.Count(f =>
+                    ((dynamic)f).bucket == "not_determinable");
+                resultObject = new
+                {
+                    check = "dead-code",
+                    totalFindings = deadCodeFindings.Count,
+                    bucketCounts = new
+                    {
+                        dead = deadBucket,
+                        test_only = testOnlyBucket,
+                        not_determinable = notDeterminableBucket
+                    },
+                    findings = deadCodeFindings
+                };
+                break;
+            case "complexity-candidates":
+                var (complexityFindings, complexityWritten, complexitySkipped, complexitySideEffects) =
+                    await ComplexityCandidatesCheckAsync(snapshot, minIncoming);
+                resultObject = new
+                {
+                    check = "complexity-candidates",
+                    totalFindings = complexityFindings.Count,
+                    bucketCounts = new { },
+                    findings = complexityFindings,
+                    scaffoldsWritten = complexityWritten,
+                    scaffoldsSkipped = complexitySkipped,
+                    sideEffects = complexitySideEffects
+                };
+                break;
+            case "depth":
+                var depthFindings = DepthCheckAsync(snapshot);
+                resultObject = new
+                {
+                    check = "depth",
+                    totalFindings = depthFindings.Count,
+                    bucketCounts = new { },
+                    findings = depthFindings
+                };
+                break;
+            case "redundancy":
+                var redundancyFindings = RedundancyCheckAsync(snapshot);
+                resultObject = new
+                {
+                    check = "redundancy",
+                    totalFindings = redundancyFindings.Count,
+                    bucketCounts = new { },
+                    findings = redundancyFindings
+                };
+                break;
+            case "all":
+                var allDeadCode = await DeadCodeCheckAsync(snapshot, projectArg);
+                var (allComplexity, allScaffoldsWritten, allScaffoldsSkipped, allSideEffects) =
+                    await ComplexityCandidatesCheckAsync(snapshot, minIncoming);
+                var allDepth = DepthCheckAsync(snapshot);
+                var allRedundancy = RedundancyCheckAsync(snapshot);
+
+                var mergedFindings = new List<object>();
+
+                foreach (var f in allDeadCode)
+                {
+                    var obj = JsonNode.Parse(JsonSerializer.Serialize(f, JsonOptions))!.AsObject();
+                    obj["check"] = "dead-code";
+                    mergedFindings.Add(obj);
+                }
+
+                foreach (var f in allComplexity)
+                {
+                    var obj = JsonNode.Parse(JsonSerializer.Serialize(f, JsonOptions))!.AsObject();
+                    obj["check"] = "complexity-candidates";
+                    mergedFindings.Add(obj);
+                }
+
+                foreach (var f in allDepth)
+                {
+                    var obj = JsonNode.Parse(JsonSerializer.Serialize(f, JsonOptions))!.AsObject();
+                    obj["check"] = "depth";
+                    mergedFindings.Add(obj);
+                }
+
+                foreach (var f in allRedundancy)
+                {
+                    var obj = JsonNode.Parse(JsonSerializer.Serialize(f, JsonOptions))!.AsObject();
+                    obj["check"] = "redundancy";
+                    mergedFindings.Add(obj);
+                }
+
+                resultObject = new
+                {
+                    check = "all",
+                    totalFindings = mergedFindings.Count,
+                    bucketCounts = new { },
+                    findings = mergedFindings,
+                    scaffoldsWritten = allScaffoldsWritten,
+                    scaffoldsSkipped = allScaffoldsSkipped,
+                    sideEffects = allSideEffects
+                };
+                break;
+            default:
+                resultObject = new
+                {
+                    check = checkArg,
+                    totalFindings = 0,
+                    bucketCounts = new { },
+                    findings = new List<object>()
+                };
+                break;
+        }
+
+        WriteJsonResult("audit", resultObject);
+    }
+
+    private static async Task<List<object>> DeadCodeCheckAsync(DiscoverySnapshot snapshot, string? projectFilter)
+    {
+        var findings = new List<object>();
+
+        // Build quick FQN-to-project lookup for source type resolution
+        var fqnToProject = snapshot.Symbols
+            .ToDictionary(s => s.MetadataName, s => s.Project);
+
+        foreach (var symbol in snapshot.Symbols)
+        {
+            var fqn = symbol.MetadataName;
+            var incomingCount = snapshot.IncomingEdges.TryGetValue(fqn, out var incomingList)
+                ? incomingList.Distinct().Count()
+                : 0;
+
+            string? bucket = null;
+
+            // ── not_determinable: ControllerBase, EF Migration, IHostedService ──
+            var isController = symbol.Kind == "controller" && symbol.KindProvenance == "compiler_proved";
+            var isMigration = symbol.File.Contains("Migrations/", StringComparison.OrdinalIgnoreCase);
+            var isHostedService = symbol.MetadataName.Contains("HostedService") || symbol.MetadataName.Contains("BackgroundService");
+
+            if ((isController || isMigration || isHostedService) && incomingCount == 0)
+            {
+                bucket = "not_determinable";
+            }
+            // ── test_only: all incoming edges come from test/spec projects ──
+            else if (incomingCount > 0)
+            {
+                var sourceProjects = incomingList!
+                    .Distinct()
+                    .Select(srcFqn => fqnToProject.TryGetValue(srcFqn, out var proj) ? proj : null)
+                    .Where(p => p != null)
+                    .Cast<string>()
+                    .ToList();
+
+                if (sourceProjects.Count > 0 && sourceProjects.All(p =>
+                    p.Contains("Test", StringComparison.OrdinalIgnoreCase) ||
+                    p.Contains("Tests", StringComparison.OrdinalIgnoreCase) ||
+                    p.Contains("Spec", StringComparison.OrdinalIgnoreCase)))
+                {
+                    bucket = "test_only";
+                }
+            }
+            // ── dead: no structural incoming references ──
+            else if (incomingCount == 0)
+            {
+                bucket = "dead";
+            }
+
+            if (bucket == null) continue;
+
+            // Apply --project= filter (incoming count reflects the full graph, not the filter)
+            if (projectFilter != null && !string.Equals(symbol.Project, projectFilter, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            findings.Add(new
+            {
+                symbol = fqn,
+                kind = symbol.Kind,
+                kindRule = symbol.KindRule,
+                kindProvenance = symbol.KindProvenance,
+                project = symbol.Project,
+                file = symbol.File,
+                line = symbol.Line,
+                bucket,
+                incomingTypeDependencyCount = incomingCount,
+                incomingTypeDependencyProvenance = "indexer_observed",
+                blindSpots = GetBlindSpots()
+            });
+        }
+
+        return findings;
+    }
+
+    private static async Task<(List<object> findings, int scaffoldsWritten, int scaffoldsSkipped, List<string> sideEffects)>
+        ComplexityCandidatesCheckAsync(DiscoverySnapshot snapshot, int minIncoming)
+    {
+        var findings = new List<object>();
+        var scaffoldsWritten = 0;
+        var scaffoldsSkipped = 0;
+        var sideEffects = new List<string>();
+
+        var fqnToProject = snapshot.Symbols
+            .ToDictionary(s => s.MetadataName, s => s.Project);
+
+        var highIncomingThreshold = Math.Max(HighIncomingDefaultThreshold, minIncoming);
+
+        foreach (var symbol in snapshot.Symbols)
+        {
+            var fqn = symbol.MetadataName;
+
+            // ── incoming type dependency count ──
+            List<string>? incomingList = null;
+            int incomingCount = 0;
+            if (snapshot.IncomingEdges.TryGetValue(fqn, out var rawList))
+            {
+                incomingList = rawList;
+                incomingCount = rawList.Distinct().Count();
+            }
+
+            // ── referencing project count ──
+            var referencingProjectCount = incomingList != null
+                ? incomingList.Distinct()
+                    .Select(src => fqnToProject.TryGetValue(src, out var p) ? p : null)
+                    .Where(p => p != null)
+                    .Cast<string>()
+                    .Distinct()
+                    .Count()
+                : 0;
+
+            // ── outgoing type dependency count ──
+            var outgoingCount = symbol.OutgoingTypeNames.Count;
+
+            // ── threshold rules (any single rule triggers candidacy) ──
+            var complexityRules = new List<string>();
+
+            if (incomingCount >= highIncomingThreshold)
+                complexityRules.Add("high_incoming");
+
+            if (referencingProjectCount >= CrossProjectMinCount)
+                complexityRules.Add("cross_project");
+
+            if (outgoingCount >= HighOutgoingMinCount)
+                complexityRules.Add("high_outgoing");
+
+            if (symbol.Kind == "controller" && symbol.KindProvenance == "compiler_proved")
+                complexityRules.Add("public_surface");
+
+            if (complexityRules.Count == 0)
+                continue;
+
+            // ── scaffold file management ──
+            var simpleName = fqn.Split('.').Last();
+            var scaffoldFileName = $"{simpleName}-scaffold.json";
+            var scaffoldFullPath = Path.Combine(CodeAuditDir, scaffoldFileName);
+
+            bool shouldWrite = false;
+            bool exists = File.Exists(scaffoldFullPath);
+
+            if (exists)
+            {
+                try
+                {
+                    var existingText = await File.ReadAllTextAsync(scaffoldFullPath);
+                    var existingNode = JsonNode.Parse(existingText);
+                    var existingStatus = existingNode?["status"]?.GetValue<string>();
+
+                    if (existingStatus == "scaffold")
+                    {
+                        shouldWrite = true;  // overwrite to refresh counts
+                        scaffoldsWritten++;
+                    }
+                    else
+                    {
+                        scaffoldsSkipped++;  // human-promoted, never overwrite
+                    }
+                }
+                catch
+                {
+                    shouldWrite = true;  // unparseable, overwrite
+                    scaffoldsWritten++;
+                }
+            }
+            else
+            {
+                shouldWrite = true;
+                scaffoldsWritten++;
+            }
+
+            if (shouldWrite)
+            {
+                var scaffold = new
+                {
+                    status = "scaffold",
+                    symbol = fqn,
+                    kind = symbol.Kind,
+                    kindRule = symbol.KindRule,
+                    kindProvenance = symbol.KindProvenance,
+                    project = symbol.Project,
+                    file = symbol.File,
+                    line = symbol.Line,
+                    incomingTypeDependencyCount = incomingCount,
+                    referencingProjectCount,
+                    outgoingTypeDependencyCount = outgoingCount,
+                    complexityRules,
+                    generatedAtUtc = DateTime.UtcNow.ToString("O")
+                };
+
+                var scaffoldJson = JsonSerializer.Serialize(scaffold, JsonOptions);
+                var tmpPath = scaffoldFullPath + ".tmp";
+                await File.WriteAllTextAsync(tmpPath, scaffoldJson);
+                File.Move(tmpPath, scaffoldFullPath, overwrite: true);
+
+                sideEffects.Add(GetRelativePath(scaffoldFullPath));
+            }
+
+            // ── finding JSON shape ──
+            findings.Add(new
+            {
+                symbol = fqn,
+                kind = symbol.Kind,
+                kindProvenance = symbol.KindProvenance,
+                project = symbol.Project,
+                file = symbol.File,
+                line = symbol.Line,
+                incomingTypeDependencyCount = incomingCount,
+                referencingProjectCount,
+                outgoingTypeDependencyCount = outgoingCount,
+                complexityRules,
+                scaffoldPath = GetRelativePath(scaffoldFullPath),
+                scaffoldWritten = shouldWrite
+            });
+        }
+
+        return (findings, scaffoldsWritten, scaffoldsSkipped, sideEffects);
+    }
+
+    private static List<object> DepthCheckAsync(DiscoverySnapshot snapshot)
+    {
+        var findings = new List<object>();
+
+        // Build lookup: FQN → SymbolRecord
+        var fqnToSymbol = snapshot.Symbols.ToDictionary(s => s.MetadataName, s => s);
+
+        // Build deduplicated incoming-count cache
+        var incomingCount = new Dictionary<string, int>();
+        foreach (var s in snapshot.Symbols)
+        {
+            var fqn = s.MetadataName;
+            incomingCount[fqn] = snapshot.IncomingEdges.TryGetValue(fqn, out var list)
+                ? list.Distinct().Count()
+                : 0;
+        }
+
+        // ── Collect all chains via recursive walk ──
+        var allChains = new List<(List<string> nodes, bool cycleDetected)>();
+
+        foreach (var symbol in snapshot.Symbols)
+        {
+            var fqn = symbol.MetadataName;
+
+            // Root: a type whose incomingTypeDependencyCount is NOT 1
+            if (incomingCount[fqn] == 1)
+                continue;
+
+            var rootSymbol = fqnToSymbol[fqn];
+
+            foreach (var nextFqn in rootSymbol.OutgoingTypeNames)
+            {
+                // Only follow if the target exists in our symbols and has exactly one incoming edge
+                if (!fqnToSymbol.TryGetValue(nextFqn, out _))
+                    continue;
+                if (incomingCount[nextFqn] != 1)
+                    continue;
+
+                var chain = new List<string> { fqn, nextFqn };
+                var visited = new HashSet<string> { fqn, nextFqn };
+                WalkDepthChain(chain, visited, nextFqn, fqnToSymbol, incomingCount, allChains);
+            }
+        }
+
+        // ── Deduplication: remove strict suffixes ──
+        allChains = allChains
+            .OrderByDescending(c => c.nodes.Count)
+            .ToList();
+
+        var deduped = new List<(List<string> nodes, bool cycleDetected)>();
+        foreach (var candidate in allChains)
+        {
+            var isSuffix = deduped.Any(accepted => IsStrictSuffix(candidate.nodes, accepted.nodes));
+            if (!isSuffix)
+                deduped.Add(candidate);
+        }
+
+        // ── Build findings ──
+        var depthBlindSpots = new List<object>
+        {
+            new { vector = "interface_polymorphism", determinability = "not_determinable" },
+            new { vector = "reflection",             determinability = "not_determinable" }
+        };
+
+        foreach (var (nodes, cycleDetected) in deduped)
+        {
+            var chainItems = nodes.Select(fq =>
+            {
+                var sym = fqnToSymbol[fq];
+                return new
+                {
+                    symbol = fq,
+                    project = sym.Project,
+                    incomingTypeDependencyCount = incomingCount[fq]
+                };
+            }).ToList();
+
+            findings.Add(new
+            {
+                chainRoot = nodes[0],
+                chainLength = nodes.Count,
+                cycleDetected,
+                chain = chainItems,
+                provenance = "indexer_observed",
+                blindSpots = depthBlindSpots
+            });
+        }
+
+        return findings;
+    }
+
+    private static void WalkDepthChain(
+        List<string> chain,
+        HashSet<string> visited,
+        string currentFqn,
+        Dictionary<string, SymbolRecord> fqnToSymbol,
+        Dictionary<string, int> incomingCount,
+        List<(List<string> nodes, bool cycleDetected)> results)
+    {
+        var currentSymbol = fqnToSymbol[currentFqn];
+        bool foundAny = false;
+
+        foreach (var nextFqn in currentSymbol.OutgoingTypeNames)
+        {
+            if (!fqnToSymbol.TryGetValue(nextFqn, out _))
+                continue;
+            if (incomingCount[nextFqn] != 1)
+                continue;
+
+            foundAny = true;
+
+            if (visited.Contains(nextFqn))
+            {
+                // Cycle detected — record chain including the cycle node and stop
+                var cycleChain = new List<string>(chain) { nextFqn };
+                if (cycleChain.Count >= 3)
+                    results.Add((cycleChain, true));
+                continue;
+            }
+
+            visited.Add(nextFqn);
+            chain.Add(nextFqn);
+
+            if (chain.Count >= 10)
+            {
+                // Cap reached — record as-is
+                if (chain.Count >= 3)
+                    results.Add((new List<string>(chain), false));
+            }
+            else
+            {
+                WalkDepthChain(chain, visited, nextFqn, fqnToSymbol, incomingCount, results);
+            }
+
+            chain.RemoveAt(chain.Count - 1);
+            visited.Remove(nextFqn);
+        }
+
+        // Leaf: no valid children (but chain is long enough to report)
+        if (!foundAny && chain.Count >= 3)
+            results.Add((new List<string>(chain), false));
+    }
+
+    private static bool IsStrictSuffix(List<string> candidate, List<string> accepted)
+    {
+        if (candidate.Count >= accepted.Count)
+            return false;
+        var skip = accepted.Count - candidate.Count;
+        return accepted.Skip(skip).SequenceEqual(candidate);
+    }
+
+    private static List<object> RedundancyCheckAsync(DiscoverySnapshot snapshot)
+    {
+        var findings = new List<object>();
+
+        var redundancyBlindSpots = new List<object>
+        {
+            new { vector = "interface_polymorphism", determinability = "not_determinable" }
+        };
+
+        // Group symbols by Kind, sort each group for stable pair ordering
+        var kindGroups = snapshot.Symbols
+            .GroupBy(s => s.Kind)
+            .ToDictionary(g => g.Key, g => g.OrderBy(s => s.MetadataName).ToList());
+
+        foreach (var kvp in kindGroups)
+        {
+            var kind = kvp.Key;
+            var group = kvp.Value;
+
+            for (int i = 0; i < group.Count; i++)
+            {
+                var symA = group[i];
+                var surfaceA = new HashSet<string>(symA.OutgoingTypeNames);
+
+                for (int j = i + 1; j < group.Count; j++)
+                {
+                    var symB = group[j];
+                    var surfaceB = new HashSet<string>(symB.OutgoingTypeNames);
+
+                    var sharedCount = surfaceA.Intersect(surfaceB).Count();
+                    var totalCount = surfaceA.Union(surfaceB).Count();
+
+                    if (totalCount == 0)
+                        continue;
+
+                    var similarity = (double)sharedCount / totalCount;
+
+                    if (similarity < 0.80)
+                        continue;
+
+                    findings.Add(new
+                    {
+                        typeA = symA.MetadataName,
+                        typeB = symB.MetadataName,
+                        kind,
+                        similarityScore = Math.Round(similarity, 2),
+                        sharedSurfaceCount = sharedCount,
+                        totalSurfaceCount = totalCount,
+                        similarityProvenance = "indexer_observed",
+                        blindSpots = redundancyBlindSpots
+                    });
+                }
+            }
+        }
+
+        return findings;
     }
 
     private static string SanitizeId(string symbolId) =>
@@ -527,10 +1234,11 @@ public class Program
     {
         return new List<object>
         {
-            new { reason = "reflection_and_strings", provenance = "not_determinable" },
-            new { reason = "string_based_DI_registration", provenance = "not_determinable" },
-            new { reason = "configuration_strings", provenance = "not_determinable" },
-            new { reason = "external_consumers_flutter_frontend", provenance = "not_determinable" }
+            new { vector = "di_registration", determinability = "not_determinable" },
+            new { vector = "framework_invocation", determinability = "not_determinable" },
+            new { vector = "interface_polymorphism", determinability = "not_determinable" },
+            new { vector = "reflection", determinability = "not_determinable" },
+            new { vector = "source_generators", determinability = "not_determinable" }
         };
     }
 
@@ -2043,6 +2751,636 @@ public class Program
             mismatches,
             unresolvedCollaborators,
             provenance = ProvenanceCompilerProved
+        });
+    }
+
+    // ──────────── Phase 3: Diagnostic Baseline Infrastructure ────────────
+
+    private static async Task<List<DiagnosticEntry>> SaveBaselineAsync(Solution solution, string path)
+    {
+        var diagnostics = new List<DiagnosticEntry>();
+        foreach (var project in solution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync();
+            if (compilation == null) continue;
+
+            foreach (var diagnostic in compilation.GetDiagnostics()
+                .Where(d => d.Severity >= DiagnosticSeverity.Warning))
+            {
+                string file = "";
+                int line = 0;
+                if (diagnostic.Location.Kind != LocationKind.None && diagnostic.Location.SourceTree != null)
+                {
+                    file = GetRelativePath(diagnostic.Location.SourceTree.FilePath);
+                    line = diagnostic.Location.GetLineSpan().StartLinePosition.Line + 1;
+                }
+
+                diagnostics.Add(new DiagnosticEntry(
+                    ProjectName: project.Name,
+                    Id: diagnostic.Id,
+                    Severity: diagnostic.Severity.ToString(),
+                    Message: diagnostic.GetMessage(),
+                    File: file,
+                    Line: line
+                ));
+            }
+        }
+
+        var baseline = new DiagnosticBaseline(
+            SchemaVersion: SchemaVersion,
+            CapturedAtUtc: DateTime.UtcNow.ToString("O"),
+            SolutionPath: SolutionPath,
+            Diagnostics: diagnostics
+        );
+
+        var json = JsonSerializer.Serialize(baseline, JsonOptions);
+        var tmp = path + ".tmp";
+        await File.WriteAllTextAsync(tmp, json);
+        File.Move(tmp, path, overwrite: true);
+
+        WriteProgress($"  Baseline saved: {diagnostics.Count} diagnostics");
+        return diagnostics;
+    }
+
+    private static async Task<DiagnosticBaseline> LoadBaselineAsync(string path)
+    {
+        if (!File.Exists(path))
+            throw new InvalidOperationException("Baseline file not found. Run --mode=check first.");
+
+        var text = await File.ReadAllTextAsync(path);
+        var baseline = JsonSerializer.Deserialize<DiagnosticBaseline>(text, JsonOptions)
+            ?? throw new InvalidOperationException("Failed to deserialize baseline file.");
+
+        if (baseline.SchemaVersion != SchemaVersion)
+            throw new InvalidOperationException($"Schema version mismatch: expected {SchemaVersion}, got {baseline.SchemaVersion}");
+
+        return baseline;
+    }
+
+    private static (List<DiagnosticEntry> added, List<DiagnosticEntry> removed) DiffDiagnostics(
+        DiagnosticBaseline baseline, List<DiagnosticEntry> current)
+    {
+        var baselineKeys = new HashSet<string>(
+            baseline.Diagnostics.Select(d => $"{d.Id}|{d.File}|{d.Line}"));
+        var currentKeys = new HashSet<string>(
+            current.Select(d => $"{d.Id}|{d.File}|{d.Line}"));
+
+        var added = current.Where(d => !baselineKeys.Contains($"{d.Id}|{d.File}|{d.Line}")).ToList();
+        var removed = baseline.Diagnostics.Where(d => !currentKeys.Contains($"{d.Id}|{d.File}|{d.Line}")).ToList();
+
+        return (added, removed);
+    }
+
+    private static async Task<List<DiagnosticEntry>> CompileAndCollectDiagnosticsAsync(Solution solution)
+    {
+        var diagnostics = new List<DiagnosticEntry>();
+        foreach (var project in solution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync();
+            if (compilation == null) continue;
+
+            foreach (var diagnostic in compilation.GetDiagnostics()
+                .Where(d => d.Severity >= DiagnosticSeverity.Warning))
+            {
+                string file = "";
+                int line = 0;
+                if (diagnostic.Location.Kind != LocationKind.None && diagnostic.Location.SourceTree != null)
+                {
+                    file = GetRelativePath(diagnostic.Location.SourceTree.FilePath);
+                    line = diagnostic.Location.GetLineSpan().StartLinePosition.Line + 1;
+                }
+
+                diagnostics.Add(new DiagnosticEntry(
+                    ProjectName: project.Name,
+                    Id: diagnostic.Id,
+                    Severity: diagnostic.Severity.ToString(),
+                    Message: diagnostic.GetMessage(),
+                    File: file,
+                    Line: line
+                ));
+            }
+        }
+        return diagnostics;
+    }
+
+    private static DiagnosticBaseline EnsureBaselineFreshness()
+    {
+        var baselinePath = Path.Combine(CodeAuditDir, "baseline-diagnostics.json");
+        if (!File.Exists(baselinePath))
+        {
+            WriteJsonResult("error", new
+            {
+                error = "stale_baseline",
+                message = "Run --mode=check first",
+                baselinePath = GetRelativePath(baselinePath)
+            });
+            Environment.Exit(1);
+        }
+
+        var baseline = LoadBaselineAsync(baselinePath).GetAwaiter().GetResult();
+        var capturedAt = DateTime.Parse(baseline.CapturedAtUtc, null, System.Globalization.DateTimeStyles.RoundtripKind);
+        if (DateTime.UtcNow - capturedAt > TimeSpan.FromHours(24))
+        {
+            WriteJsonResult("error", new
+            {
+                error = "stale_baseline",
+                message = "Baseline is older than 24 hours. Run --mode=check again",
+                baselinePath = GetRelativePath(baselinePath),
+                capturedAtUtc = baseline.CapturedAtUtc
+            });
+            Environment.Exit(1);
+        }
+
+        return baseline;
+    }
+
+    // ──────────── 3.1: Resolve (near-match symbol lookup) ────────────
+
+    private static async Task<List<ResolveCandidate>> ResolveSymbolAsync(Solution solution, string partialName)
+    {
+        var candidates = new List<ResolveCandidate>();
+        var seen = new HashSet<string>();
+
+        foreach (var project in solution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync();
+            if (compilation == null) continue;
+
+            foreach (var document in project.Documents)
+            {
+                var filePath = document.FilePath ?? "";
+                if (IsGeneratedFile(filePath)) continue;
+
+                var syntaxTree = await document.GetSyntaxTreeAsync();
+                if (syntaxTree == null) continue;
+
+                var root = await syntaxTree.GetRootAsync();
+                var model = compilation.GetSemanticModel(syntaxTree);
+
+                foreach (var typeDecl in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
+                {
+                    if (model.GetDeclaredSymbol(typeDecl) is not INamedTypeSymbol namedSymbol)
+                        continue;
+
+                    var displayString = namedSymbol.ToDisplayString();
+                    if (!seen.Add(displayString)) continue; // deduplicate
+
+                    int score;
+                    string scoreReason;
+
+                    if (displayString == partialName)
+                    {
+                        score = 100;
+                        scoreReason = "exact metadataName match";
+                    }
+                    else if (namedSymbol.Name == partialName)
+                    {
+                        score = 80;
+                        scoreReason = "simple name match ignoring namespace";
+                    }
+                    else if (displayString.EndsWith(partialName))
+                    {
+                        score = 60;
+                        scoreReason = "metadataName ends with partialName";
+                    }
+                    else if (displayString.Contains(partialName))
+                    {
+                        score = 40;
+                        scoreReason = "metadataName contains partialName";
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    var (kind, _, _) = ClassifyType(namedSymbol, compilation);
+
+                    var line = namedSymbol.Locations
+                        .Where(loc => loc.IsInSource)
+                        .Select(loc => loc.GetLineSpan().StartLinePosition.Line + 1)
+                        .FirstOrDefault();
+
+                    candidates.Add(new ResolveCandidate(
+                        MetadataName: displayString,
+                        Kind: kind,
+                        Project: project.Name,
+                        File: GetRelativePath(filePath),
+                        Line: line,
+                        Score: score,
+                        ScoreReason: scoreReason
+                    ));
+                }
+            }
+        }
+
+        return candidates.OrderByDescending(c => c.Score).Take(10).ToList();
+    }
+
+    // ──────────── 3.3: Simulate Delete ────────────
+
+    private static List<object> GetSimulateBlindSpots()
+    {
+        return new List<object>
+        {
+            new { vector = "reflection", determinability = "not_determinable" },
+            new { vector = "string_based_di", determinability = "not_determinable" },
+            new { vector = "flutter_frontend", determinability = "not_determinable" }
+        };
+    }
+
+    private static List<object> GetRenameBlindSpots()
+    {
+        return new List<object>
+        {
+            new { vector = "string_based_di", determinability = "not_determinable" },
+            new { vector = "reflection", determinability = "not_determinable" }
+        };
+    }
+
+    private static List<object> ScanCacheImpact(string fqn)
+    {
+        var results = new List<object>();
+        if (!Directory.Exists(CodeAuditDir)) return results;
+
+        foreach (var file in Directory.GetFiles(CodeAuditDir, "*.json", SearchOption.AllDirectories))
+        {
+            var fileName = Path.GetFileName(file);
+            if (fileName == "baseline-diagnostics.json" || fileName == "dirty-files.json")
+                continue;
+
+            try
+            {
+                var text = File.ReadAllText(file);
+                var node = JsonNode.Parse(text);
+                if (node == null) continue;
+
+                var foundFields = new List<string>();
+                WalkJsonForValue(node, fqn, "", foundFields);
+
+                if (foundFields.Count > 0)
+                {
+                    results.Add(new { file = GetRelativePath(file), fields = foundFields });
+                }
+            }
+            catch { /* skip unparseable */ }
+        }
+
+        return results;
+    }
+
+    private static void WalkJsonForValue(JsonNode? node, string target, string path, List<string> foundFields)
+    {
+        if (node == null) return;
+
+        if (node is JsonValue jv)
+        {
+            if (jv.TryGetValue<string>(out var str) && str == target)
+                foundFields.Add(path.TrimStart('.'));
+            return;
+        }
+
+        if (node is JsonObject obj)
+        {
+            foreach (var kvp in obj)
+            {
+                WalkJsonForValue(kvp.Value, target, path + "." + kvp.Key, foundFields);
+            }
+            return;
+        }
+
+        if (node is JsonArray arr)
+        {
+            for (int i = 0; i < arr.Count; i++)
+            {
+                WalkJsonForValue(arr[i], target, $"{path}[{i}]", foundFields);
+            }
+        }
+    }
+
+    private static async Task HandleSimulateDeleteAsync(string fqn)
+    {
+        var solution = await LoadSolutionAsync();
+        var baseline = EnsureBaselineFreshness();
+
+        var (symbol, compilation) = await FindTypeSymbolAsync(solution, fqn);
+        if (symbol == null)
+        {
+            WriteJsonResult("simulate-delete", new
+            {
+                command = "simulate-delete",
+                symbol = fqn,
+                resolved = false
+            });
+            return;
+        }
+
+        // Step 2: Reference sites
+        var referencedSymbols = await SymbolFinder.FindReferencesAsync(symbol, solution);
+        var allRefs = referencedSymbols.SelectMany(r => r.Locations).ToList();
+        var referenceSites = allRefs.Select(r => new
+        {
+            file = GetRelativePath(r.Location.SourceTree?.FilePath),
+            line = r.Location.GetLineSpan().StartLinePosition.Line + 1,
+            project = r.Document.Project.Name
+        }).ToList();
+        var referenceSiteCount = referenceSites.Count;
+
+        // Step 3: External exposure
+        bool externallyExposed = false;
+        string? externallyExposedRule = null;
+
+        if (InheritsFrom(symbol, "Microsoft.AspNetCore.Mvc.ControllerBase"))
+        {
+            externallyExposed = true;
+            externallyExposedRule = "inherits from ControllerBase";
+        }
+        else if (symbol.GetAttributes().Any(a =>
+            a.AttributeClass?.Name == "ApiControllerAttribute" &&
+            a.AttributeClass.ContainingNamespace?.ToDisplayString().Contains("Mvc") == true))
+        {
+            externallyExposed = true;
+            externallyExposedRule = "has ApiController attribute";
+        }
+
+        // Step 4: Removal recompile
+        var docIds = symbol.Locations
+            .Where(l => l.IsInSource)
+            .Select(l => solution.GetDocument(l.SourceTree))
+            .Where(d => d != null)
+            .Select(d => d!.Id)
+            .Distinct()
+            .ToImmutableArray();
+
+        var removedSolution = solution.RemoveDocuments(docIds);
+        var currentDiagnostics = await CompileAndCollectDiagnosticsAsync(removedSolution);
+        var (addedDiagnostics, _) = DiffDiagnostics(baseline, currentDiagnostics);
+
+        // Step 5: Cache impact
+        var cacheImpact = ScanCacheImpact(fqn);
+
+        // Step 6: Verdict
+        string verdict;
+        string verdictRule;
+
+        if (externallyExposed)
+        {
+            verdict = "unsafe";
+            verdictRule = "symbol is externally exposed";
+        }
+        else if (addedDiagnostics.Count > 0)
+        {
+            verdict = "introduces_errors";
+            verdictRule = $"removal introduces {addedDiagnostics.Count} new diagnostic(s)";
+        }
+        else if (referenceSiteCount == 0)
+        {
+            verdict = "no_csharp_references";
+            verdictRule = "no C# references found in solution";
+        }
+        else
+        {
+            verdict = "no_new_diagnostics";
+            verdictRule = $"{referenceSiteCount} reference(s) exist but no new diagnostics introduced";
+        }
+
+        WriteJsonResult("simulate-delete", new
+        {
+            command = "simulate-delete",
+            symbol = fqn,
+            resolved = true,
+            externallyExposed,
+            externallyExposedRule,
+            referenceSiteCount,
+            referenceSites,
+            referenceSiteProvenance = "compiler_proved",
+            newDiagnostics = addedDiagnostics,
+            newDiagnosticsProvenance = "compiler_proved",
+            cacheImpact,
+            blindSpots = GetSimulateBlindSpots(),
+            verdict,
+            verdictRule
+        });
+    }
+
+    // ──────────── 3.4: Simulate Rename ────────────
+
+    private static async Task HandleSimulateRenameAsync(string fqn, string newName)
+    {
+        var solution = await LoadSolutionAsync();
+        var baseline = EnsureBaselineFreshness();
+
+        var (symbol, compilation) = await FindTypeSymbolAsync(solution, fqn);
+        if (symbol == null)
+        {
+            WriteJsonResult("simulate-rename", new
+            {
+                command = "simulate-rename",
+                symbol = fqn,
+                newName,
+                resolved = false
+            });
+            return;
+        }
+
+        // Step 2: Collision check
+        var ns = symbol.ContainingNamespace;
+        string newFqn = ns != null && !ns.IsGlobalNamespace
+            ? ns.ToDisplayString() + "." + newName
+            : newName;
+
+        var (collidingSymbol, _) = await FindTypeSymbolAsync(solution, newFqn);
+        if (collidingSymbol != null)
+        {
+            WriteJsonResult("simulate-rename", new
+            {
+                command = "simulate-rename",
+                symbol = fqn,
+                newName,
+                resolved = true,
+                verdict = "collision",
+                collidingSymbol = newFqn
+            });
+            return;
+        }
+
+        // Step 3: Rename
+        var renamedSolution = await Renamer.RenameSymbolAsync(solution, symbol, new SymbolRenameOptions(), newName);
+
+        // Collect changed documents with diff info
+        var changedDocuments = new List<object>();
+        var projectChanges = renamedSolution.GetChanges(solution).GetProjectChanges();
+        foreach (var projectChange in projectChanges)
+        {
+            foreach (var docId in projectChange.GetChangedDocuments())
+            {
+                var oldDoc = solution.GetDocument(docId);
+                var newDoc = renamedSolution.GetDocument(docId);
+                if (oldDoc == null || newDoc == null) continue;
+
+                var oldTree = await oldDoc.GetSyntaxTreeAsync();
+                var newTree = await newDoc.GetSyntaxTreeAsync();
+                if (oldTree == null || newTree == null) continue;
+
+                var oldRoot = await oldTree.GetRootAsync();
+                var newRoot = await newTree.GetRootAsync();
+
+                var oldText = oldRoot.ToFullString();
+                var newText = newRoot.ToFullString();
+
+                var oldLines = oldText.Split('\n').Length;
+                var newLines = newText.Split('\n').Length;
+
+                changedDocuments.Add(new
+                {
+                    file = GetRelativePath(oldDoc.FilePath),
+                    addedLines = Math.Max(0, newLines - oldLines),
+                    removedLines = Math.Max(0, oldLines - newLines)
+                });
+            }
+        }
+
+        // Step 4: Recompile
+        var currentDiagnostics = await CompileAndCollectDiagnosticsAsync(renamedSolution);
+        var (addedDiagnostics, _) = DiffDiagnostics(baseline, currentDiagnostics);
+
+        // Step 6: Cache impact (using old FQN)
+        var cacheImpact = ScanCacheImpact(fqn);
+
+        // Step 7: Verdict
+        string verdict;
+        string verdictRule;
+
+        if (addedDiagnostics.Count > 0)
+        {
+            verdict = "introduces_errors";
+            verdictRule = $"rename introduces {addedDiagnostics.Count} new diagnostic(s)";
+        }
+        else
+        {
+            verdict = "no_new_diagnostics";
+            verdictRule = "no new diagnostics introduced by rename";
+        }
+
+        WriteJsonResult("simulate-rename", new
+        {
+            command = "simulate-rename",
+            symbol = fqn,
+            newName,
+            newFqn,
+            resolved = true,
+            changedDocumentCount = changedDocuments.Count,
+            changedDocuments,
+            newDiagnostics = addedDiagnostics,
+            newDiagnosticsProvenance = "compiler_proved",
+            cacheImpact,
+            blindSpots = GetRenameBlindSpots(),
+            verdict,
+            verdictRule
+        });
+    }
+
+    // ──────────── 3.5: Prune ────────────
+
+    private static async Task HandlePruneAsync()
+    {
+        var solution = await LoadSolutionAsync();
+        var files = Directory.GetFiles(CodeAuditDir, "*.json", SearchOption.AllDirectories)
+            .Where(f =>
+            {
+                var name = Path.GetFileName(f);
+                return name != "baseline-diagnostics.json" && name != "dirty-files.json";
+            })
+            .ToList();
+
+        var entries = new List<object>();
+        var missingCount = 0;
+        var degradedCount = 0;
+        var okCount = 0;
+
+        foreach (var file in files)
+        {
+            try
+            {
+                var text = await File.ReadAllTextAsync(file);
+                var node = JsonNode.Parse(text);
+                if (node == null) continue;
+
+                var symbolValue = node["symbol"]?.GetValue<string>();
+                if (string.IsNullOrEmpty(symbolValue))
+                {
+                    // Also check for symbolId field
+                    symbolValue = node["symbolId"]?.GetValue<string>();
+                    if (string.IsNullOrEmpty(symbolValue))
+                        continue;
+                }
+
+                var (typedSymbol, _) = await FindTypeSymbolAsync(solution, symbolValue);
+                if (typedSymbol == null)
+                {
+                    entries.Add(new
+                    {
+                        file = GetRelativePath(file),
+                        symbol = symbolValue,
+                        status = "missing",
+                        action = "review_and_remove"
+                    });
+                    missingCount++;
+                    continue;
+                }
+
+                // Check for degradation if facts.sourceFile and facts.line present
+                var facts = node["facts"]?.AsObject();
+                if (facts != null)
+                {
+                    var cachedFile = facts["sourceFile"]?.GetValue<string>();
+                    var cachedLine = facts["line"]?.GetValue<int>();
+
+                    if (cachedFile != null || cachedLine != null)
+                    {
+                        var currentFile = GetRelativePath(typedSymbol.Locations
+                            .FirstOrDefault(l => l.IsInSource)?.SourceTree?.FilePath ?? "");
+                        var currentLine = typedSymbol.Locations
+                            .Where(l => l.IsInSource)
+                            .Select(l => l.GetLineSpan().StartLinePosition.Line + 1)
+                            .FirstOrDefault();
+
+                        bool fileMismatch = cachedFile != null && cachedFile != currentFile;
+                        bool lineMismatch = cachedLine != null && Math.Abs(cachedLine.Value - currentLine) > 5;
+
+                        if (fileMismatch || lineMismatch)
+                        {
+                            entries.Add(new
+                            {
+                                file = GetRelativePath(file),
+                                symbol = symbolValue,
+                                status = "degraded",
+                                action = "review_and_update"
+                            });
+                            degradedCount++;
+                            continue;
+                        }
+                    }
+                }
+
+                entries.Add(new
+                {
+                    file = GetRelativePath(file),
+                    symbol = symbolValue,
+                    status = "ok",
+                    action = (string?)null
+                });
+                okCount++;
+            }
+            catch { /* skip unparseable */ }
+        }
+
+        WriteJsonResult("prune", new
+        {
+            checkedCount = entries.Count,
+            missingCount,
+            degradedCount,
+            okCount,
+            entries
         });
     }
 
