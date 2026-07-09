@@ -1,0 +1,31 @@
+{
+  "env": {
+    "BASE_URL": "https://api.deepseek.com",
+    "API_KEY": "sk-4e4e07b732f84ba293dce73cacab68e8"
+  },
+  "model": "deepseek-v4-flash",
+  "thinkingEnabled": true,
+  "reasoningEffort": "high",
+  "debugLogEnabled": false,
+  "telemetryEnabled": false,
+  "permissions": {
+    "allow": [
+      "read-in-cwd",
+      "query-git-log",
+      "mcp"
+    ],
+    "deny": [
+      "read-out-cwd",
+      "write-out-cwd",
+      "delete-out-cwd",
+      "mutate-git-log"
+    ],
+    "ask": [
+      "write-in-cwd",
+      "delete-in-cwd",
+      "network"
+    ],
+    "defaultMode": "askAll"
+  },
+  "mcpServers": {}
+}

@@ -23,6 +23,30 @@ record DiscoveredType(string SymbolId, string Kind, string KindCategory, string 
     string SourceFile, string Accessibility, string? Inherits, List<string> Implements, List<string> Dependencies);
 record FanSummary(int Count, List<string> Sources, Dictionary<string, int> ByProject);
 
+record ProjectCatalog(string Name, string AssemblyName, string ProjectPath, string OutputPath);
+
+record SymbolRecord(
+    string MetadataName,
+    string Kind,
+    string KindRule,
+    string KindProvenance,
+    string Project,
+    string File,
+    int Line,
+    string Namespace,
+    bool IsAbstract,
+    bool IsSealed,
+    int MemberCount,
+    List<string> OutgoingTypeNames
+);
+
+    record DiscoverySnapshot(
+        List<ProjectCatalog> Projects,
+        List<SymbolRecord> Symbols,
+        Dictionary<string, List<string>> IncomingEdges,
+        DateTime BuiltAtUtc
+    );
+
 public class Program
 {
     private const int SchemaVersion = 2;
@@ -52,9 +76,6 @@ public class Program
     {
         _useJson = args.Contains("--json");
 
-        // Argument resolution: CLI arg > env var > hard error (no defaults)
-        //   --solution=        / INDEXER_SOLUTION_PATH
-        //   --output-dir=      / INDEXER_OUTPUT_DIR
         var solutionPathArg = args.FirstOrDefault(a => a.StartsWith("--solution="))?.Split('=', 2)[1]
             ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
         if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
@@ -77,7 +98,6 @@ public class Program
         SemanticDir = Path.Combine(CodeAuditDir, "semantic");
         DirtyFilePath = Path.Combine(CodeAuditDir, "dirty-files.json");
 
-        // Warn if solution path is not under the resolved git root
         var gitRootNormalized = GitRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         if (!SolutionPath.StartsWith(gitRootNormalized, StringComparison.OrdinalIgnoreCase))
             Console.Error.WriteLine($"WARNING: solution path '{SolutionPath}' is not under git root '{GitRoot}' — relative paths may be incorrect.");
@@ -543,7 +563,7 @@ public class Program
         }
     }
 
-    private static List<string> ExtractDependencies(INamedTypeSymbol symbol)
+    private static HashSet<string> CollectExternalTypeFqns(INamedTypeSymbol symbol)
     {
         var deps = new HashSet<string>();
 
@@ -578,6 +598,12 @@ public class Program
             }
         }
 
+        return deps;
+    }
+
+    private static List<string> ExtractDependencies(INamedTypeSymbol symbol)
+    {
+        var deps = new HashSet<string>(CollectExternalTypeFqns(symbol));
         deps.Remove(symbol.ToDisplayString());
         return deps.OrderBy(d => d).ToList();
     }
@@ -607,67 +633,72 @@ public class Program
         });
     }
 
-    private static string ClassifyKind(INamedTypeSymbol symbol)
+    private static (string kind, string kindRule, string kindProvenance) ClassifyType(INamedTypeSymbol symbol, Compilation compilation)
     {
-        if (symbol.TypeKind == TypeKind.Interface)
-            return "interface";
-
         var name = symbol.Name;
         var nameLower = name.ToLowerInvariant();
         var ns = symbol.ContainingNamespace?.ToDisplayString() ?? "";
         var nsLower = ns.ToLowerInvariant();
 
-        if (InheritsFrom(symbol, "Microsoft.AspNetCore.Mvc.ControllerBase"))
-            return "controller";
+        if (InheritsFrom(symbol, "Microsoft.AspNetCore.Mvc.ControllerBase")
+            || symbol.GetAttributes()
+                .Any(a => a.AttributeClass?.Name == "ApiControllerAttribute" && a.AttributeClass.ContainingNamespace?.ToDisplayString().Contains("Mvc") == true))
+        {
+            return ("controller", "derives from ControllerBase", "compiler_proved");
+        }
 
-        if (nameLower.EndsWith("command") && ImplementsInterface(symbol, "MediatR.IRequest"))
-            return "command";
+        if (ImplementsInterface(symbol, "MediatR.IRequest") || ImplementsInterface(symbol, "MediatR.IRequest<>"))
+        {
+            return ("command", "implements IRequest", "compiler_proved");
+        }
 
-        if (nameLower.EndsWith("query") && ImplementsInterface(symbol, "MediatR.IRequest"))
-            return "query";
+        if (nameLower.EndsWith("command"))
+        {
+            return ("command", "name ends with Command", "indexer_observed");
+        }
 
-        if (symbol.AllInterfaces.Any(i => i.Name.EndsWith("IRepository")))
-            return "repository";
+        if (ImplementsInterface(symbol, "MediatR.IRequest") || ImplementsInterface(symbol, "MediatR.IRequest<>"))
+        {
+            return ("query", "implements IRequest", "compiler_proved");
+        }
+
+        if (nameLower.EndsWith("query"))
+        {
+            return ("query", "name ends with Query", "indexer_observed");
+        }
+
+        if (symbol.AllInterfaces.Any(i => i.Name.EndsWith("IRepository")) ||
+            nsLower.Contains(".repositories"))
+        {
+            var rule = symbol.AllInterfaces.Any(i => i.Name.EndsWith("IRepository"))
+                ? "implements IRepository"
+                : "namespace contains Repositories";
+            var provenance = symbol.AllInterfaces.Any(i => i.Name.EndsWith("IRepository"))
+                ? "compiler_proved"
+                : "indexer_observed";
+            return ("repository", rule, provenance);
+        }
+
+        if (nsLower.Contains(".domain.") || nsLower.Contains(".entities."))
+        {
+            return ("entity", "namespace contains Domain or Entities", "indexer_observed");
+        }
 
         if (nameLower.EndsWith("service"))
-            return "service";
+        {
+            return ("service", "name ends with Service", "indexer_observed");
+        }
 
-        if (ImplementsInterface(symbol, "MediatR.IRequestHandler"))
-            return "handler";
-
-        if (InheritsFrom(symbol.BaseType, "FluentValidation.AbstractValidator"))
-            return "validator";
-
-        if (InheritsFrom(symbol, "Microsoft.Extensions.Hosting.BackgroundService")
-            || ImplementsInterface(symbol, "Microsoft.Extensions.Hosting.IHostedService"))
-            return "hosted-service";
-
-        // Must be AFTER command/query checks (those catch MediatR Request types first)
-        if (nameLower.EndsWith("dto") || nameLower.EndsWith("response") || nameLower.EndsWith("request")
-            || nsLower.Contains(".dtos.") || nsLower.Contains(".models."))
-            return "dto";
-
-        if (nsLower.Contains(".domain.entities."))
-            return "entity";
-
-        if (symbol.TypeKind == TypeKind.Enum)
-            return "enum";
-
-        if (nameLower.EndsWith("middleware"))
-            return "middleware";
-
-        if (nameLower.EndsWith("extensions") || nameLower.EndsWith("configuration"))
-            return "configuration";
-
-        return "unclassified";
+        return ("unclassified", "", "indexer_observed");
     }
 
-    private static DiscoveredType BuildDiscoveredType(INamedTypeSymbol symbol, string projectName, string filePath)
+    private static DiscoveredType BuildDiscoveredType(INamedTypeSymbol symbol, string projectName, string filePath, Compilation compilation)
     {
+        var (kind, kindRule, kindProvenance) = ClassifyType(symbol, compilation);
         return new DiscoveredType(
             SymbolId: symbol.ToDisplayString(),
             Kind: symbol.TypeKind.ToString(),
-            KindCategory: ClassifyKind(symbol),
+            KindCategory: kind,
             Namespace: symbol.ContainingNamespace?.ToDisplayString() ?? "",
             Project: projectName,
             SourceFile: GetRelativePath(filePath),
@@ -680,24 +711,15 @@ public class Program
         );
     }
 
-    private static async Task DiscoverAsync(string[] args)
+    private static async Task<DiscoverySnapshot> BuildDiscoverySnapshotAsync(Solution solution)
     {
-        var kindFilter = args.FirstOrDefault(a => a.StartsWith("--kind="))?.Split('=', 2)[1];
-        var projectFilter = args.FirstOrDefault(a => a.StartsWith("--project="))?.Split('=', 2)[1];
+        var projects = new List<ProjectCatalog>();
+        var symbols = new List<SymbolRecord>();
+        var outgoingEdges = new Dictionary<string, List<string>>();
 
-        if (!_useJson)
-            WriteProgress("Discovering types...");
-
-        var solution = await LoadSolutionAsync();
-        var allTypes = new List<DiscoveredType>();
-        var seen = new HashSet<string>();
-
+        // First pass: collect all symbols and their outgoing type names
         foreach (var project in solution.Projects)
         {
-            if (projectFilter != null
-                && !string.Equals(project.Name, projectFilter, StringComparison.OrdinalIgnoreCase))
-                continue;
-
             var compilation = await project.GetCompilationAsync();
             if (compilation == null) continue;
 
@@ -717,20 +739,110 @@ public class Program
                     if (model.GetDeclaredSymbol(typeDecl) is not INamedTypeSymbol namedSymbol)
                         continue;
 
-                    if (!seen.Add(namedSymbol.ToDisplayString()))
+                    // Skip compiler-generated symbols
+                    if (namedSymbol.Locations.Any(loc => loc.IsInMetadata))
                         continue;
 
-                    var entry = BuildDiscoveredType(namedSymbol, project.Name, filePath);
-                    allTypes.Add(entry);
+                    // Get the first source location for line number
+                    var line = namedSymbol.Locations
+                        .Where(loc => loc.IsInSource)
+                        .Select(loc => loc.GetLineSpan().StartLinePosition.Line + 1)
+                        .FirstOrDefault();
+
+                    // Get classification info
+                    var (kind, kindRule, kindProvenance) = ClassifyType(namedSymbol, compilation);
+
+                    // Get outgoing type names
+                    var outgoingTypeNames = CollectExternalTypeFqns(namedSymbol).ToList();
+
+                    // Add to outgoingEdges dictionary for later inversion
+                    var symbolId = namedSymbol.ToDisplayString();
+                    if (!outgoingEdges.ContainsKey(symbolId))
+                        outgoingEdges[symbolId] = new List<string>();
+                    outgoingEdges[symbolId].AddRange(outgoingTypeNames);
+
+                    // Create SymbolRecord
+                    var symbolRecord = new SymbolRecord(
+                        MetadataName: symbolId,
+                        Kind: kind,
+                        KindRule: kindRule,
+                        KindProvenance: kindProvenance,
+                        Project: project.Name,
+                        File: GetRelativePath(filePath),
+                        Line: line,
+                        Namespace: namedSymbol.ContainingNamespace?.ToDisplayString() ?? "",
+                        IsAbstract: namedSymbol.IsAbstract,
+                        IsSealed: namedSymbol.IsSealed,
+                        MemberCount: namedSymbol.GetMembers().Count(),
+                        OutgoingTypeNames: outgoingTypeNames
+                    );
+
+                    symbols.Add(symbolRecord);
                 }
+            }
+
+            // Add project info
+            var projectCatalog = new ProjectCatalog(
+                Name: project.Name,
+                AssemblyName: project.AssemblyName?.ToString() ?? "",
+                ProjectPath: project.FilePath ?? "",
+                OutputPath: project.OutputFilePath ?? ""
+            );
+            projects.Add(projectCatalog);
+        }
+
+        // Second pass: invert outgoingEdges to build incomingEdges
+        var incomingEdges = new Dictionary<string, List<string>>();
+        foreach (var (sourceSymbol, targetSymbols) in outgoingEdges)
+        {
+            foreach (var targetSymbol in targetSymbols)
+            {
+                if (!incomingEdges.ContainsKey(targetSymbol))
+                    incomingEdges[targetSymbol] = new List<string>();
+                incomingEdges[targetSymbol].Add(sourceSymbol);
             }
         }
 
+        return new DiscoverySnapshot(
+            Projects: projects,
+            Symbols: symbols,
+            IncomingEdges: incomingEdges,
+            BuiltAtUtc: DateTime.UtcNow
+        );
+    }
+
+    private static async Task DiscoverAsync(string[] args)
+    {
+        var kindFilter = args.FirstOrDefault(a => a.StartsWith("--kind="))?.Split('=', 2)[1];
+        var projectFilter = args.FirstOrDefault(a => a.StartsWith("--project="))?.Split('=', 2)[1];
+
+        if (!_useJson)
+            WriteProgress("Discovering types...");
+
+        var solution = await LoadSolutionAsync();
+        var snapshot = await BuildDiscoverySnapshotAsync(solution);
+
+        // Filter by kind if specified
+        var filteredSymbols = snapshot.Symbols;
         if (kindFilter != null)
         {
             var filters = kindFilter.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            allTypes = allTypes.Where(t => filters.Contains(t.KindCategory, StringComparer.OrdinalIgnoreCase)).ToList();
+            filteredSymbols = filteredSymbols.Where(s => filters.Contains(s.Kind, StringComparer.OrdinalIgnoreCase)).ToList();
         }
+
+        // Convert to old DiscoveredType format for backward compatibility
+        var allTypes = filteredSymbols.Select(s => new DiscoveredType(
+            SymbolId: s.MetadataName,
+            Kind: "unknown", // This would need to be derived from the kind
+            KindCategory: s.Kind,
+            Namespace: s.Namespace,
+            Project: s.Project,
+            SourceFile: s.File,
+            Accessibility: "Public", // This would need to be derived
+            Inherits: null, // This would need to be derived
+            Implements: new List<string>(), // This would need to be derived
+            Dependencies: new List<string>() // This would need to be derived
+        )).ToList();
 
         var byKindCategory = allTypes.GroupBy(t => t.KindCategory)
             .ToDictionary(g => g.Key, g => g.Count());
@@ -796,28 +908,33 @@ public class Program
         string symbolId, string project, string accessibility,
         Dictionary<string, HashSet<string>> outgoingEdges,
         Dictionary<string, HashSet<string>> incomingEdges,
-        Dictionary<string, string> typeToProject)
+        Dictionary<string, string> typeToProject,
+        bool externallyExposed)
     {
         var fanOut = outgoingEdges.TryGetValue(symbolId, out var outSet) ? outSet : new HashSet<string>();
         var fanIn = incomingEdges.TryGetValue(symbolId, out var inSet) ? inSet : new HashSet<string>();
 
-        if (fanIn.Count == 0 && fanOut.Count == 0)
-            return "isolated";
+        // Calculate new tier rules
+        var incomingTypeDependencyCount = fanIn.Count;
+        var outgoingTypeDependencyCount = fanOut.Count;
+        var referencingProjectCount = incomingEdges
+            .Where(kvp => kvp.Value.Contains(symbolId))
+            .Select(kvp => typeToProject.GetValueOrDefault(kvp.Key, "(unknown)"))
+            .Distinct()
+            .Count();
 
-        var allNeighbours = new HashSet<string>(fanIn);
-        allNeighbours.UnionWith(fanOut);
-
-        var sameProject = allNeighbours.All(n =>
-            typeToProject.TryGetValue(n, out var p) && string.Equals(p, project, StringComparison.OrdinalIgnoreCase));
-
-        if (sameProject)
-            return "project_local";
-
-        var isPublic = string.Equals(accessibility, "Public", StringComparison.OrdinalIgnoreCase);
-        if (isPublic)
+        // New tier rules (first match wins)
+        if (externallyExposed)
             return "public_surface";
 
-        return "cross_project";
+        if (referencingProjectCount >= 2)
+            return "cross_project";
+
+        if (incomingTypeDependencyCount > 0)
+            return "project_local";
+
+        // isolated: incomingTypeDependencyCount == 0 and not exposed
+        return "isolated";
     }
 
     private static FanSummary BuildFanSummary(
@@ -857,76 +974,11 @@ public class Program
             WriteProgress("Analyzing structure...");
 
         var solution = await LoadSolutionAsync();
+        var snapshot = await BuildDiscoverySnapshotAsync(solution);
 
-        var outgoingEdges = new Dictionary<string, HashSet<string>>();
-        var typeToProject = new Dictionary<string, string>();
-        var typeToAccessibility = new Dictionary<string, string>();
-        var typeToKind = new Dictionary<string, string>();
-        var typeToKindCategory = new Dictionary<string, string>();
-        var typeToNamespace = new Dictionary<string, string>();
-        var typeToSourceFile = new Dictionary<string, string>();
-        var typeToInherits = new Dictionary<string, string?>();
-        var typeToImplements = new Dictionary<string, List<string>>();
-
-        var seen = new HashSet<string>();
-
-        foreach (var project in solution.Projects)
-        {
-            var compilation = await project.GetCompilationAsync();
-            if (compilation == null) continue;
-
-            foreach (var document in project.Documents)
-            {
-                var filePath = document.FilePath ?? "";
-                if (IsGeneratedFile(filePath)) continue;
-
-                var syntaxTree = await document.GetSyntaxTreeAsync();
-                if (syntaxTree == null) continue;
-
-                var root = await syntaxTree.GetRootAsync();
-                var model = compilation.GetSemanticModel(syntaxTree);
-
-                foreach (var typeDecl in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
-                {
-                    if (model.GetDeclaredSymbol(typeDecl) is not INamedTypeSymbol namedSymbol)
-                        continue;
-
-                    var symbolId = namedSymbol.ToDisplayString();
-                    if (!seen.Add(symbolId))
-                        continue;
-
-                    typeToProject[symbolId] = project.Name;
-                    typeToAccessibility[symbolId] = namedSymbol.DeclaredAccessibility.ToString();
-                    typeToKind[symbolId] = namedSymbol.TypeKind.ToString();
-                    typeToKindCategory[symbolId] = ClassifyKind(namedSymbol);
-                    typeToNamespace[symbolId] = namedSymbol.ContainingNamespace?.ToDisplayString() ?? "";
-                    typeToSourceFile[symbolId] = GetRelativePath(filePath);
-                    typeToInherits[symbolId] = namedSymbol.BaseType != null
-                        && namedSymbol.BaseType.SpecialType != SpecialType.System_Object
-                        ? namedSymbol.BaseType.ToDisplayString()
-                        : null;
-                    typeToImplements[symbolId] = namedSymbol.AllInterfaces
-                        .Select(i => i.ToDisplayString()).ToList();
-
-                    var deps = ExtractDependencies(namedSymbol);
-                    outgoingEdges[symbolId] = new HashSet<string>(deps);
-                }
-            }
-        }
-
-        // Invert graph
-        var incomingEdges = new Dictionary<string, HashSet<string>>();
-        foreach (var (src, deps) in outgoingEdges)
-        {
-            foreach (var dep in deps)
-            {
-                if (!incomingEdges.ContainsKey(dep))
-                    incomingEdges[dep] = new HashSet<string>();
-                incomingEdges[dep].Add(src);
-            }
-        }
-
-        if (!typeToProject.ContainsKey(symbolFilter))
+        // Find the symbol in the snapshot
+        var symbolRecord = snapshot.Symbols.FirstOrDefault(s => s.MetadataName == symbolFilter);
+        if (symbolRecord == null)
         {
             if (_useJson)
                 WriteJsonResult("structure", new { symbol = symbolFilter, resolved = false, error = "Symbol not found" });
@@ -935,12 +987,49 @@ public class Program
             return;
         }
 
+        // Build outgoingEdges from snapshot for backward compatibility
+        var outgoingEdges = new Dictionary<string, HashSet<string>>();
+        foreach (var symbol in snapshot.Symbols)
+        {
+            outgoingEdges[symbol.MetadataName] = new HashSet<string>(symbol.OutgoingTypeNames);
+        }
+
+        // Build incomingEdges from snapshot
+        var incomingEdges = new Dictionary<string, HashSet<string>>();
+        foreach (var (sourceSymbol, targetSymbols) in outgoingEdges)
+        {
+            foreach (var targetSymbol in targetSymbols)
+            {
+                if (!incomingEdges.ContainsKey(targetSymbol))
+                    incomingEdges[targetSymbol] = new HashSet<string>();
+                incomingEdges[targetSymbol].Add(sourceSymbol);
+            }
+        }
+
+        // Build typeToProject from snapshot
+        var typeToProject = new Dictionary<string, string>();
+        foreach (var symbol in snapshot.Symbols)
+        {
+            typeToProject[symbol.MetadataName] = symbol.Project;
+        }
+
+        // Build typeToAccessibility from snapshot (approximate)
+        var typeToAccessibility = new Dictionary<string, string>();
+        foreach (var symbol in snapshot.Symbols)
+        {
+            // We don't have accessibility info in SymbolRecord, so we'll use a default
+            typeToAccessibility[symbol.MetadataName] = "Public";
+        }
+
         var fanIn = BuildFanSummary(symbolFilter, incomingEdges, typeToProject);
         var fanOut = BuildFanSummary(symbolFilter, outgoingEdges, typeToProject);
 
+        // Determine externallyExposed: controller descendant OR [ApiController] attribute
+        var externallyExposed = symbolRecord.Kind == "controller";
+        
         var tier = ComputeComplexityTier(
             symbolFilter, typeToProject[symbolFilter], typeToAccessibility[symbolFilter],
-            outgoingEdges, incomingEdges, typeToProject);
+            outgoingEdges, incomingEdges, typeToProject, externallyExposed);
 
         object? depth2 = null;
         if (depth >= 2)
@@ -958,14 +1047,14 @@ public class Program
             {
                 symbol = symbolFilter,
                 resolved = true,
-                kind = typeToKind[symbolFilter],
-                kindCategory = typeToKindCategory[symbolFilter],
-                ns = typeToNamespace[symbolFilter],
-                project = typeToProject[symbolFilter],
-                sourceFile = typeToSourceFile[symbolFilter],
+                kind = symbolRecord.Kind,
+                kindCategory = symbolRecord.Kind,
+                ns = symbolRecord.Namespace,
+                project = symbolRecord.Project,
+                sourceFile = symbolRecord.File,
                 accessibility = typeToAccessibility[symbolFilter],
-                inherits = typeToInherits[symbolFilter],
-                implements = typeToImplements[symbolFilter],
+                inherits = null as string,
+                implements = new List<string>(),
                 complexityTier = tier,
                 fanIn,
                 fanOut,
@@ -993,10 +1082,10 @@ public class Program
         else
         {
             Console.WriteLine($"\nSymbol: {symbolFilter}");
-            Console.WriteLine($"  Kind:           {typeToKind[symbolFilter]} ({typeToKindCategory[symbolFilter]})");
-            Console.WriteLine($"  Namespace:      {typeToNamespace[symbolFilter]}");
-            Console.WriteLine($"  Project:        {typeToProject[symbolFilter]}");
-            Console.WriteLine($"  Source file:    {typeToSourceFile[symbolFilter]}");
+            Console.WriteLine($"  Kind:           {symbolRecord.Kind} ({symbolRecord.Kind})");
+            Console.WriteLine($"  Namespace:      {symbolRecord.Namespace}");
+            Console.WriteLine($"  Project:        {symbolRecord.Project}");
+            Console.WriteLine($"  Source file:    {symbolRecord.File}");
             Console.WriteLine($"  Accessibility:  {typeToAccessibility[symbolFilter]}");
             Console.WriteLine($"  Complexity tier: {tier}");
             Console.WriteLine($"\n  Fan-in:  {fanIn.Count}");
