@@ -1611,6 +1611,18 @@ public class Program
         }
     }
 
+    private static (string tier, string tierRule) ComputeTier(
+        bool externallyExposed, int referencingProjectCount, int incomingCount)
+    {
+        if (externallyExposed)
+            return ("public_surface", "externally exposed (controller, compiler_proved)");
+        if (referencingProjectCount >= CrossProjectMinCount)
+            return ("cross_project", $"referencingProjectCount >= {CrossProjectMinCount}");
+        if (incomingCount > 0)
+            return ("project_local", "incomingTypeDependencyCount > 0");
+        return ("isolated", "no incoming dependencies and not externally exposed");
+    }
+
     private static string ComputeComplexityTier(
         string symbolId, string project, string accessibility,
         Dictionary<string, HashSet<string>> outgoingEdges,
@@ -1629,16 +1641,8 @@ public class Program
             .Distinct()
             .Count();
 
-        if (externallyExposed)
-            return "public_surface";
-
-        if (referencingProjectCount >= 2)
-            return "cross_project";
-
-        if (incomingTypeDependencyCount > 0)
-            return "project_local";
-
-        return "isolated";
+        var (tier, _) = ComputeTier(externallyExposed, referencingProjectCount, incomingTypeDependencyCount);
+        return tier;
     }
 
     private static FanSummary BuildFanSummary(
@@ -2586,28 +2590,7 @@ public class Program
 
         var externallyExposed = symbol.Kind == "controller" && symbol.KindProvenance == "compiler_proved";
 
-        string tier;
-        string tierRule;
-        if (externallyExposed)
-        {
-            tier = "public_surface";
-            tierRule = "externally exposed (controller, compiler_proved)";
-        }
-        else if (referencingProjectCount >= CrossProjectMinCount)
-        {
-            tier = "cross_project";
-            tierRule = $"referencingProjectCount >= {CrossProjectMinCount}";
-        }
-        else if (incomingCount > 0)
-        {
-            tier = "project_local";
-            tierRule = "incomingTypeDependencyCount > 0";
-        }
-        else
-        {
-            tier = "isolated";
-            tierRule = "no incoming dependencies and not externally exposed";
-        }
+        var (tier, tierRule) = ComputeTier(externallyExposed, referencingProjectCount, incomingCount);
 
         return new
         {
