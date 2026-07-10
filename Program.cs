@@ -657,7 +657,7 @@ public class Program
                 continue;
 
             var simpleName = fqn.Split('.').Last();
-            var scaffoldFileName = $"{simpleName}-scaffold.json";
+            var scaffoldFileName = $"{SanitizeId(simpleName)}-scaffold.json";
             var scaffoldFullPath = Path.Combine(CodeAuditDir, scaffoldFileName);
 
             bool shouldWrite = false;
