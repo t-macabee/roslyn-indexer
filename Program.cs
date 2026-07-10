@@ -543,12 +543,16 @@ public class Program
         WriteJsonResult("audit", resultObject);
     }
 
+    private static Dictionary<string, string> GetSymbolToProjectMap(DiscoverySnapshot snapshot)
+    {
+        return snapshot.Symbols.ToDictionary(s => s.MetadataName, s => s.Project);
+    }
+
     private static async Task<List<object>> DeadCodeCheckAsync(DiscoverySnapshot snapshot, string? projectFilter)
     {
         var findings = new List<object>();
 
-        var fqnToProject = snapshot.Symbols
-            .ToDictionary(s => s.MetadataName, s => s.Project);
+        var fqnToProject = GetSymbolToProjectMap(snapshot);
 
         foreach (var symbol in snapshot.Symbols)
         {
@@ -623,8 +627,7 @@ public class Program
         var scaffoldsSkipped = 0;
         var sideEffects = new List<string>();
 
-        var fqnToProject = snapshot.Symbols
-            .ToDictionary(s => s.MetadataName, s => s.Project);
+        var fqnToProject = GetSymbolToProjectMap(snapshot);
 
         var highIncomingThreshold = Math.Max(HighIncomingDefaultThreshold, minIncoming);
 
@@ -2391,14 +2394,11 @@ public class Program
                         var dependencyChanged = newDependencyHash != fpInfo.Dependency;
                         if (surfaceChanged || dependencyChanged)
                         {
-                            if (surfaceChanged && dependencyChanged)
+                            if (surfaceChanged)
                             {
-                                WriteProgress($"  Surface and dependencies changed for: {symbolId}");
-                                await FlagSemanticStaleAsync(symbolId, "surface_changed");
-                            }
-                            else if (surfaceChanged)
-                            {
-                                WriteProgress($"  Surface changed for: {symbolId}");
+                                WriteProgress(dependencyChanged
+                                    ? $"  Surface and dependencies changed for: {symbolId}"
+                                    : $"  Surface changed for: {symbolId}");
                                 await FlagSemanticStaleAsync(symbolId, "surface_changed");
                             }
                             else
@@ -2640,7 +2640,7 @@ public class Program
             var snapshot = await BuildDiscoverySnapshotAsync(solution);
 
             fqnToSymbol = snapshot.Symbols.ToDictionary(s => s.MetadataName, s => s);
-            fqnToProject = snapshot.Symbols.ToDictionary(s => s.MetadataName, s => s.Project);
+            fqnToProject = GetSymbolToProjectMap(snapshot);
             incomingEdges = snapshot.IncomingEdges;
             tiersAvailable = true;
         }
