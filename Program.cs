@@ -284,6 +284,23 @@ public class Program
                     }
                     break;
 
+                case "simulate-move":
+                    var smSymbol = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
+                    var smTargetNamespace = args.FirstOrDefault(a => a.StartsWith("--target-namespace="))?.Split('=', 2)[1];
+                    var smTargetProject = args.FirstOrDefault(a => a.StartsWith("--target-project="))?.Split('=', 2)[1];
+                    if (string.IsNullOrEmpty(smSymbol) || string.IsNullOrEmpty(smTargetNamespace))
+                    {
+                        if (_useJson)
+                            WriteJsonResult("simulate-move", new { error = "Missing required arguments --symbol=<FQN> --target-namespace=<Namespace>" });
+                        else
+                            Console.WriteLine("Usage: --mode=simulate-move --symbol=<FQN> --target-namespace=<Namespace> [--target-project=<ProjectName>] [--json]");
+                    }
+                    else
+                    {
+                        await HandleSimulateMoveAsync(smSymbol, smTargetNamespace, smTargetProject);
+                    }
+                    break;
+
                 case "prune":
                     await HandlePruneAsync();
                     break;
@@ -309,6 +326,7 @@ public class Program
                     Console.WriteLine("  --mode=check [--json]");
                     Console.WriteLine("  --mode=simulate-delete --symbol=<FQN> [--json]");
                     Console.WriteLine("  --mode=simulate-rename --symbol=<FQN> --new-name=<SimpleName> [--json]");
+                    Console.WriteLine("  --mode=simulate-move --symbol=<FQN> --target-namespace=<Namespace> [--target-project=<ProjectName>] [--json]");
                     Console.WriteLine("  --mode=prune [--json]");
                     Console.WriteLine("  --mode=audit --check=dead-code|complexity-candidates|depth|redundancy|all [--project=<name>] [--min-incoming=N] [--json]");
                     break;
@@ -3277,6 +3295,783 @@ public class Program
             verdict,
             verdictRule
         });
+    }
+
+    // ──────────── F5 Stream B: Simulate Move ────────────
+
+    private static async Task HandleSimulateMoveAsync(string fqn, string targetNamespace, string? targetProjectArg)
+    {
+        var solution = await LoadSolutionAsync();
+        var baseline = EnsureBaselineFreshness();
+
+        // --- Step 1: Symbol resolution ---
+        var (symbol, compilation) = await FindTypeSymbolAsync(solution, fqn);
+        if (symbol == null)
+        {
+            WriteJsonResult("simulate-move", new
+            {
+                command = "simulate-move",
+                symbol = fqn,
+                targetNamespace,
+                targetProject = targetProjectArg,
+                resolved = false
+            });
+            return;
+        }
+
+        // --- Step 2: Move plan derivation ---
+        var simpleName = symbol.Name;
+        var sourceNamespace = symbol.ContainingNamespace?.ToDisplayString() ?? "";
+        if (symbol.ContainingNamespace?.IsGlobalNamespace == true)
+            sourceNamespace = "<global>";
+
+        var sourceDoc = symbol.Locations
+            .Where(l => l.IsInSource)
+            .Select(l => solution.GetDocument(l.SourceTree))
+            .FirstOrDefault(d => d != null);
+        var sourceProject = sourceDoc?.Project.Name ?? "";
+
+        var sourceDocIds = symbol.Locations
+            .Where(l => l.IsInSource)
+            .Select(l => solution.GetDocument(l.SourceTree))
+            .Where(d => d != null)
+            .Select(d => d!.Id)
+            .Distinct()
+            .ToHashSet();
+
+        var isGlobalTarget = string.IsNullOrEmpty(targetNamespace) || targetNamespace == "<global>";
+        var newFqn = isGlobalTarget ? simpleName : targetNamespace + "." + simpleName;
+
+        // --- Step 3: Resolve target project ---
+        string? resolvedTargetProject;
+
+        if (!string.IsNullOrEmpty(targetProjectArg))
+        {
+            resolvedTargetProject = targetProjectArg;
+        }
+        else
+        {
+            // Infer target project by matching root namespace prefix.
+            // Use project.DefaultNamespace, fall back to project.Name.
+            var matchedProjects = new List<(string projectName, string rootNamespace)>();
+            foreach (var project in solution.Projects)
+            {
+                var rootNs = project.DefaultNamespace;
+                if (string.IsNullOrEmpty(rootNs))
+                    rootNs = project.Name;
+                if (string.IsNullOrEmpty(rootNs))
+                    continue;
+
+                if (targetNamespace == rootNs || targetNamespace.StartsWith(rootNs + "."))
+                {
+                    matchedProjects.Add((project.Name, rootNs));
+                }
+            }
+
+            if (matchedProjects.Count == 0)
+            {
+                resolvedTargetProject = null;
+            }
+            else if (matchedProjects.Count == 1)
+            {
+                resolvedTargetProject = matchedProjects[0].projectName;
+            }
+            else
+            {
+                var distinctNames = matchedProjects.Select(m => m.projectName).Distinct().ToList();
+                WriteJsonResult("simulate-move", new
+                {
+                    error = "ambiguous_target_project",
+                    candidates = distinctNames
+                });
+                Environment.Exit(1);
+                return;
+            }
+        }
+
+        if (resolvedTargetProject == null)
+        {
+            WriteJsonResult("simulate-move", new
+            {
+                error = "target_project_not_found",
+                message = $"No project found matching namespace '{targetNamespace}'"
+            });
+            Environment.Exit(1);
+            return;
+        }
+
+        // --- No-op check ---
+        if (sourceNamespace == targetNamespace && sourceProject == resolvedTargetProject)
+        {
+            WriteJsonResult("simulate-move", new
+            {
+                error = "no_op_move",
+                message = "target namespace and project are identical to source"
+            });
+            return;
+        }
+
+        // --- Cross-project flag ---
+        bool isCrossProject = !string.IsNullOrEmpty(sourceProject) &&
+                              sourceProject != resolvedTargetProject;
+
+        // --- Build snapshot and project graph for proof checks ---
+        var snapshot = await BuildDiscoverySnapshotAsync(solution);
+        var projectGraph = BuildProjectReferenceGraph(solution);
+
+        // Build FQN-to-project lookup from snapshot
+        var fqnToProject = new Dictionary<string, string>();
+        foreach (var s in snapshot.Symbols)
+            fqnToProject[s.MetadataName] = s.Project;
+
+        // --- Proof blocks ---
+        string? verdict = null;
+        string? verdictRule = null;
+
+        // ═══════════════════════════════════════════════════════
+        // Step 4: Collision proof (always first; always emitted)
+        // ═══════════════════════════════════════════════════════
+        bool collision;
+        string? collidingSymbolFqn;
+        {
+            // Search across all projects for a type with the same simple name in the target namespace.
+            // Use FindTypeSymbolAsync for exact match; also walk snapshot for broader coverage.
+            var (collidingType, _) = await FindTypeSymbolAsync(solution, newFqn);
+            if (collidingType != null && !SymbolEqualityComparer.Default.Equals(collidingType, symbol))
+            {
+                collision = true;
+                collidingSymbolFqn = newFqn;
+            }
+            else
+            {
+                // Fallback: check snapshot for any type in target namespace with same simple name
+                var snapshotCollision = snapshot.Symbols.FirstOrDefault(s =>
+                    s.Namespace == targetNamespace &&
+                    GetSimpleName(s.MetadataName) == simpleName &&
+                    s.MetadataName != fqn);
+                if (snapshotCollision != null)
+                {
+                    collision = true;
+                    collidingSymbolFqn = snapshotCollision.MetadataName;
+                }
+                else
+                {
+                    collision = false;
+                    collidingSymbolFqn = null;
+                }
+            }
+        }
+
+        var collisionProof = new
+        {
+            collision,
+            collidingSymbol = collidingSymbolFqn,
+            provenance = ProvenanceCompilerProved
+        };
+
+        if (collision)
+        {
+            verdict = "collision";
+            verdictRule = "target namespace already contains a type with the same simple name";
+
+            WriteJsonResult("simulate-move", new
+            {
+                command = "simulate-move",
+                symbol = fqn,
+                targetNamespace,
+                targetProject = resolvedTargetProject,
+                newFqn,
+                resolved = true,
+                isCrossProject,
+                collisionProof,
+                dependencyVisibilityProof = new
+                {
+                    missingProjectReferences = (object?)null,
+                    wouldIntroduceCycle = (bool?)null,
+                    provenance = ProvenanceCompilerProved,
+                    status = "not_checked"
+                },
+                referencerVisibilityProof = new
+                {
+                    visibilityGaps = (object?)null,
+                    wouldIntroduceCycle = (bool?)null,
+                    callerSetProvenance = ProvenanceIndexerObserved,
+                    cycleCheckProvenance = ProvenanceCompilerProved,
+                    note = "caller set is structural; callers via interface polymorphism may be absent",
+                    status = "not_checked"
+                },
+                blindSpots = GetMoveBlindSpots(),
+                verdict,
+                verdictRule
+            });
+            return;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // Step 5: Dependency visibility proof
+        // ═══════════════════════════════════════════════════════
+        var missingProjectReferences = new List<object>();
+        bool depWouldIntroduceCycle = false;
+
+        if (!isCrossProject)
+        {
+            // Same project: no new references required
+            depWouldIntroduceCycle = false;
+        }
+        else
+        {
+            var externalTypeFqns = CollectExternalTypeFqns(symbol);
+
+            // Already-referenced projects from target
+            var existingRefs = projectGraph.TryGetValue(resolvedTargetProject!, out var refs)
+                ? refs
+                : new HashSet<string>();
+
+            foreach (var extFqn in externalTypeFqns)
+            {
+                if (!fqnToProject.TryGetValue(extFqn, out var depProject))
+                    continue;
+                if (depProject == resolvedTargetProject)
+                    continue; // same project, no reference needed
+                if (existingRefs.Contains(depProject))
+                    continue; // already referenced
+
+                // Would adding target -> depProject create a cycle?
+                // A cycle exists if depProject can already reach targetProject.
+                var wouldCycle = HasPathInProjectGraph(projectGraph, depProject, resolvedTargetProject!);
+
+                missingProjectReferences.Add(new
+                {
+                    dependencyType = extFqn,
+                    dependencyProject = depProject,
+                    wouldIntroduceCycle = wouldCycle
+                });
+
+                if (wouldCycle)
+                    depWouldIntroduceCycle = true;
+            }
+        }
+
+        var dependencyVisibilityProof = new
+        {
+            missingProjectReferences,
+            wouldIntroduceCycle = depWouldIntroduceCycle,
+            provenance = ProvenanceCompilerProved
+        };
+
+        if (depWouldIntroduceCycle)
+        {
+            verdict = "dependency_not_visible";
+            verdictRule = "moving to target project would require a new project reference that creates a cycle in the dependency graph";
+
+            WriteJsonResult("simulate-move", new
+            {
+                command = "simulate-move",
+                symbol = fqn,
+                targetNamespace,
+                targetProject = resolvedTargetProject,
+                newFqn,
+                resolved = true,
+                isCrossProject,
+                collisionProof,
+                dependencyVisibilityProof,
+                referencerVisibilityProof = new
+                {
+                    visibilityGaps = (object?)null,
+                    wouldIntroduceCycle = (bool?)null,
+                    callerSetProvenance = ProvenanceIndexerObserved,
+                    cycleCheckProvenance = ProvenanceCompilerProved,
+                    note = "caller set is structural; callers via interface polymorphism may be absent",
+                    status = "not_checked"
+                },
+                blindSpots = GetMoveBlindSpots(),
+                verdict,
+                verdictRule
+            });
+            return;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // Step 6: Referencer visibility proof
+        // ═══════════════════════════════════════════════════════
+        var visibilityGaps = new List<object>();
+        bool refWouldIntroduceCycle = false;
+
+        {
+            // Source caller set from snapshot.IncomingEdges
+            var callerFqns = snapshot.IncomingEdges.TryGetValue(fqn, out var incoming)
+                ? incoming.Distinct().ToList()
+                : new List<string>();
+
+            if (!isCrossProject)
+            {
+                // Same project: all callers retain visibility
+                refWouldIntroduceCycle = false;
+            }
+            else
+            {
+                // Check if source project already references target project
+                var sourceRefs = projectGraph.TryGetValue(sourceProject, out var sRefs)
+                    ? sRefs
+                    : new HashSet<string>();
+                bool hasRefToTarget = sourceRefs.Contains(resolvedTargetProject!);
+
+                if (!hasRefToTarget)
+                {
+                    // Would adding source -> target create a cycle?
+                    // A cycle exists if target can already reach source.
+                    refWouldIntroduceCycle = HasPathInProjectGraph(projectGraph, resolvedTargetProject!, sourceProject);
+
+                    if (!refWouldIntroduceCycle)
+                    {
+                        // Record visibility gaps for callers in the source project
+                        foreach (var callerFqn in callerFqns)
+                        {
+                            if (fqnToProject.TryGetValue(callerFqn, out var callerProject) &&
+                                callerProject == sourceProject)
+                            {
+                                visibilityGaps.Add(new
+                                {
+                                    callerSymbol = callerFqn,
+                                    callerProject = sourceProject
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        var referencerVisibilityProof = new
+        {
+            visibilityGaps,
+            wouldIntroduceCycle = refWouldIntroduceCycle,
+            callerSetProvenance = ProvenanceIndexerObserved,
+            cycleCheckProvenance = ProvenanceCompilerProved,
+            note = "caller set is structural; callers via interface polymorphism may be absent"
+        };
+
+        if (refWouldIntroduceCycle)
+        {
+            verdict = "referencer_not_visible";
+            verdictRule = "callers would lose visibility after the move, and the project reference change required to restore it would introduce a cycle";
+
+            // Early-exit: match collision/dependency_not_visible pattern.
+            // No recompile, no cacheImpact scan.
+            WriteJsonResult("simulate-move", new
+            {
+                command = "simulate-move",
+                symbol = fqn,
+                targetNamespace,
+                targetProject = resolvedTargetProject,
+                newFqn,
+                resolved = true,
+                isCrossProject,
+                collisionProof,
+                dependencyVisibilityProof,
+                referencerVisibilityProof,
+                blindSpots = GetMoveBlindSpots(),
+                verdict,
+                verdictRule
+            });
+            return;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // Step 7: In-memory rename + recompile (Stream C)
+        // ═══════════════════════════════════════════════════════
+        List<object> changedDocuments = new();
+        List<DiagnosticEntry> addedDiagnostics = new();
+        List<object>? cacheImpact = null;
+        var affectedProjects = new HashSet<string>();
+
+        if (verdict == null)
+        {
+            // Apply the move in-memory
+            (solution, changedDocuments) = await ApplyInMemoryMoveAsync(
+                solution, fqn, newFqn, symbol, sourceNamespace, targetNamespace, sourceDocIds);
+
+            // Collect affected project names for recompile
+            foreach (var cd in changedDocuments)
+            {
+                var file = cd.GetType().GetProperty("file")?.GetValue(cd)?.ToString();
+                if (file != null)
+                {
+                    foreach (var project in solution.Projects)
+                    {
+                        foreach (var doc in project.Documents)
+                        {
+                            if (GetRelativePath(doc.FilePath) == file)
+                            {
+                                affectedProjects.Add(project.Name);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Recompile affected projects
+            var currentDiagnostics = await CompileAndCollectDiagnosticsAsync(solution);
+            (addedDiagnostics, _) = DiffDiagnostics(baseline, currentDiagnostics);
+
+            // Step 7: Cache impact for move
+            cacheImpact = ScanCacheImpactForMove(fqn, newFqn);
+
+            // Step 8: Verdict (evaluated in order; first match wins)
+            // collision → dependency_not_visible → referencer_not_visible already handled above
+            if (addedDiagnostics.Count > 0)
+            {
+                verdict = "introduces_errors";
+                verdictRule = $"recompile introduces {addedDiagnostics.Count} new diagnostic(s)";
+            }
+            else
+            {
+                verdict = "no_new_diagnostics";
+                verdictRule = "all three proof checks raised no hard stop; recompile introduced no new diagnostics";
+            }
+        }
+
+        WriteJsonResult("simulate-move", new
+        {
+            command = "simulate-move",
+            symbol = fqn,
+            targetNamespace,
+            targetProject = resolvedTargetProject,
+            newFqn,
+            resolved = true,
+            isCrossProject,
+            collisionProof,
+            dependencyVisibilityProof,
+            referencerVisibilityProof,
+            changedDocumentCount = changedDocuments.Count,
+            changedDocuments,
+            newDiagnostics = addedDiagnostics,
+            newDiagnosticsProvenance = ProvenanceCompilerProved,
+            cacheImpact = cacheImpact ?? new List<object>(),
+            blindSpots = GetMoveBlindSpots(),
+            verdict,
+            verdictRule
+        });
+    }
+
+    // ──────────── Simulate Move helpers ────────────
+
+    /// <summary>
+    /// Build a directed graph of project references.
+    /// Key: project name. Value: set of project names that this project directly references.
+    /// </summary>
+    private static Dictionary<string, HashSet<string>> BuildProjectReferenceGraph(Solution solution)
+    {
+        var projectIdToName = solution.Projects.ToDictionary(p => p.Id, p => p.Name);
+        var graph = new Dictionary<string, HashSet<string>>();
+
+        foreach (var project in solution.Projects)
+        {
+            var refs = new HashSet<string>();
+            foreach (var pr in project.ProjectReferences)
+            {
+                if (projectIdToName.TryGetValue(pr.ProjectId, out var name))
+                    refs.Add(name);
+            }
+            graph[project.Name] = refs;
+        }
+
+        return graph;
+    }
+
+    /// <summary>
+    /// Iterative DFS: returns true if there is a directed path from fromProject to toProject
+    /// in the project reference graph.
+    /// </summary>
+    private static bool HasPathInProjectGraph(
+        Dictionary<string, HashSet<string>> graph,
+        string fromProject,
+        string toProject)
+    {
+        if (fromProject == toProject)
+            return true;
+
+        var visited = new HashSet<string>();
+        var stack = new Stack<string>();
+        stack.Push(fromProject);
+
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (current == toProject)
+                return true;
+            if (!visited.Add(current))
+                continue;
+
+            if (graph.TryGetValue(current, out var neighbors))
+            {
+                foreach (var neighbor in neighbors)
+                {
+                    if (!visited.Contains(neighbor))
+                        stack.Push(neighbor);
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Extract the simple name (last segment after the final dot) from a fully-qualified
+    /// metadata name. Strips generic arity suffix (backtick) for comparison purposes.
+    /// </summary>
+    private static string GetSimpleName(string metadataName)
+    {
+        var lastDot = metadataName.LastIndexOf('.');
+        var simple = lastDot >= 0 ? metadataName[(lastDot + 1)..] : metadataName;
+        var backtick = simple.IndexOf('`');
+        return backtick >= 0 ? simple[..backtick] : simple;
+    }
+
+    /// <summary>
+    /// Apply the in-memory move: change namespace declarations in source documents,
+    /// update using directives and qualified-name references throughout the solution.
+    /// Returns the modified solution and changed-document summaries (line counts only).
+    /// </summary>
+    private static async Task<(Solution solution, List<object> changedDocuments)> ApplyInMemoryMoveAsync(
+        Solution solution,
+        string oldFqn,
+        string newFqn,
+        INamedTypeSymbol symbol,
+        string sourceNamespace,
+        string targetNamespace,
+        HashSet<DocumentId> sourceDocIds)
+    {
+        var changedDocuments = new List<object>();
+        var docChanges = new Dictionary<DocumentId, SyntaxNode>();
+
+        foreach (var project in solution.Projects)
+        {
+            foreach (var doc in project.Documents)
+            {
+                var root = await doc.GetSyntaxRootAsync();
+                if (root == null) continue;
+
+                var oldLineCount = root.ToFullString().Split('\n').Length;
+
+                var newRoot = root;
+
+                // 1. If this is a source document, change the enclosing namespace declaration
+                if (sourceDocIds.Contains(doc.Id) && sourceNamespace != targetNamespace)
+                {
+                    newRoot = ChangeNamespaceDeclarations(newRoot, sourceNamespace, targetNamespace);
+                }
+
+                // 2. Update using directives that import the old namespace
+                if (sourceNamespace != targetNamespace)
+                {
+                    newRoot = UpdateUsingDirectives(newRoot, sourceNamespace, targetNamespace);
+                }
+
+                // 3. Update qualified-name references to the type (OldNs.TypeName → NewNs.TypeName)
+                newRoot = UpdateQualifiedTypeReferences(newRoot, oldFqn, newFqn);
+
+                if (newRoot != root)
+                {
+                    docChanges[doc.Id] = newRoot;
+
+                    var newLineCount = newRoot.ToFullString().Split('\n').Length;
+                    changedDocuments.Add(new
+                    {
+                        file = GetRelativePath(doc.FilePath),
+                        addedLines = Math.Max(0, newLineCount - oldLineCount),
+                        removedLines = Math.Max(0, oldLineCount - newLineCount)
+                    });
+                }
+            }
+        }
+
+        // Apply all changes to the solution
+        var resultSolution = solution;
+        foreach (var (docId, newRoot) in docChanges)
+        {
+            resultSolution = resultSolution.WithDocumentSyntaxRoot(docId, newRoot);
+        }
+
+        return (resultSolution, changedDocuments);
+    }
+
+    /// <summary>
+    /// Replace namespace declarations whose name matches <paramref name="oldNs"/>
+    /// with <paramref name="newNs"/>. Handles both file-scoped and block-scoped declarations.
+    /// </summary>
+    private static SyntaxNode ChangeNamespaceDeclarations(SyntaxNode root, string oldNs, string newNs)
+    {
+        var rewritten = root;
+
+        // File-scoped namespace declarations
+        var fileScoped = rewritten.DescendantNodes()
+            .OfType<FileScopedNamespaceDeclarationSyntax>()
+            .Where(ns => ns.Name.ToString() == oldNs)
+            .ToList();
+        foreach (var ns in fileScoped)
+        {
+            var newName = SyntaxFactory.ParseName(newNs)
+                .WithTriviaFrom(ns.Name);
+            rewritten = rewritten.ReplaceNode(ns, ns.WithName(newName));
+        }
+
+        // Block-scoped namespace declarations
+        var blockScoped = rewritten.DescendantNodes()
+            .OfType<NamespaceDeclarationSyntax>()
+            .Where(ns => ns.Name.ToString() == oldNs)
+            .ToList();
+        foreach (var ns in blockScoped)
+        {
+            var newName = SyntaxFactory.ParseName(newNs)
+                .WithTriviaFrom(ns.Name);
+            rewritten = rewritten.ReplaceNode(ns, ns.WithName(newName));
+        }
+
+        return rewritten;
+    }
+
+    /// <summary>
+    /// Replace using directives that reference <paramref name="oldNs"/> with <paramref name="newNs"/>.
+    /// </summary>
+    private static SyntaxNode UpdateUsingDirectives(SyntaxNode root, string oldNs, string newNs)
+    {
+        var usings = root.DescendantNodes()
+            .OfType<UsingDirectiveSyntax>()
+            .Where(u => u.Name != null && u.Name.ToString() == oldNs)
+            .ToList();
+
+        var rewritten = root;
+        foreach (var u in usings)
+        {
+            var newName = SyntaxFactory.ParseName(newNs)
+                .WithTriviaFrom(u.Name!);
+            rewritten = rewritten.ReplaceNode(u, u.WithName(newName));
+        }
+
+        return rewritten;
+    }
+
+    /// <summary>
+    /// Replace qualified-name references to the moved type (OldFullFqn → NewFullFqn)
+    /// in qualified-name expressions and simple identifier references within the solution.
+    /// </summary>
+    private static SyntaxNode UpdateQualifiedTypeReferences(SyntaxNode root, string oldFqn, string newFqn)
+    {
+        var rewritten = root;
+
+        // Handle QualifiedNameSyntax: e.g., OldNs.SomeType → NewNs.SomeType
+        var qualifiedRefs = rewritten.DescendantNodes()
+            .OfType<QualifiedNameSyntax>()
+            .Where(qn => qn.ToString() == oldFqn)
+            .ToList();
+        foreach (var qn in qualifiedRefs)
+        {
+            var newName = SyntaxFactory.ParseName(newFqn)
+                .WithTriviaFrom(qn);
+            rewritten = rewritten.ReplaceNode(qn, newName);
+        }
+
+        return rewritten;
+    }
+
+    /// <summary>
+    /// Scan .codeaudit/*.json cache files for the old FQN. Detect entries where
+    /// the "symbol" field matches, and separately where "collaborators" arrays
+    /// contain the old FQN. Returns entries with oldFqn, newFqn, and field discriminator.
+    /// </summary>
+    private static List<object> ScanCacheImpactForMove(string oldFqn, string newFqn)
+    {
+        var results = new List<object>();
+        if (!Directory.Exists(CodeAuditDir)) return results;
+
+        foreach (var file in Directory.GetFiles(CodeAuditDir, "*.json", SearchOption.AllDirectories))
+        {
+            var fileName = Path.GetFileName(file);
+            if (fileName == "baseline-diagnostics.json" || fileName == "dirty-files.json")
+                continue;
+
+            try
+            {
+                var text = File.ReadAllText(file);
+                var node = JsonNode.Parse(text);
+                if (node == null) continue;
+
+                // Check "symbol" field at root level
+                var symbolField = node["symbol"];
+                if (symbolField != null)
+                {
+                    var symbolValue = symbolField.GetValue<string>();
+                    if (symbolValue == oldFqn)
+                    {
+                        results.Add(new
+                        {
+                            file = GetRelativePath(file),
+                            field = "symbol",
+                            oldFqn,
+                            newFqn
+                        });
+                    }
+                }
+
+                // Also check "symbolId" field (used in some cache entries)
+                var symbolIdField = node["symbolId"];
+                if (symbolIdField != null)
+                {
+                    var symbolIdValue = symbolIdField.GetValue<string>();
+                    if (symbolIdValue == oldFqn)
+                    {
+                        // Only add if not already added via "symbol" field
+                        if (symbolField == null || symbolField.GetValue<string>() != oldFqn)
+                        {
+                            results.Add(new
+                            {
+                                file = GetRelativePath(file),
+                                field = "symbol",
+                                oldFqn,
+                                newFqn
+                            });
+                        }
+                    }
+                }
+
+                // Check "collaborators" array (nested under interpretation per cache file schema)
+                var collaborators = node["interpretation"]?["collaborators"]?.AsArray();
+                if (collaborators != null)
+                {
+                    foreach (var collab in collaborators)
+                    {
+                        var collabStr = collab?["symbol"]?.GetValue<string>();
+                        if (collabStr == oldFqn)
+                        {
+                            results.Add(new
+                            {
+                                file = GetRelativePath(file),
+                                field = "collaborators",
+                                oldFqn,
+                                newFqn
+                            });
+                            break; // one entry per file for collaborators
+                        }
+                    }
+                }
+            }
+            catch { /* skip unparseable */ }
+        }
+
+        return results;
+    }
+
+    private static List<object> GetMoveBlindSpots()
+    {
+        return new List<object>
+        {
+            new { vector = "string_based_di",        determinability = ProvenanceNotDeterminable },
+            new { vector = "reflection",             determinability = ProvenanceNotDeterminable },
+            new { vector = "flutter_frontend",       determinability = ProvenanceNotDeterminable },
+            new { vector = "interface_polymorphism", determinability = ProvenanceNotDeterminable }
+        };
     }
 
     // ──────────── 3.5: Prune ────────────
