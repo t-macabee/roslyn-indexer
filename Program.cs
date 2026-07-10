@@ -193,7 +193,6 @@ public class Program
                     await AuditModeAsync(args);
                     break;
 
-                // ──── Phase 3 modes ────
                 case "resolve":
                     var resolveSymbol = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
                     if (string.IsNullOrEmpty(resolveSymbol))
@@ -320,7 +319,7 @@ public class Program
                     Console.WriteLine("  --mode=sweep");
                     Console.WriteLine("  --mode=status");
                     Console.WriteLine("  --mode=lint");
-                    Console.WriteLine("  --mode=impact");
+                    Console.WriteLine("  --mode=impact [--json]  (annotates affected entries with impact tiers when snapshot available)");
                     Console.WriteLine("  --mode=verify-facts [--json]");
                     Console.WriteLine("  --mode=resolve --symbol=<partial> [--json]");
                     Console.WriteLine("  --mode=check [--json]");
@@ -422,7 +421,6 @@ public class Program
             return;
         }
 
-        // Build the discovery snapshot once; check methods (4.1–4.4) will receive it.
         var snapshot = await BuildDiscoverySnapshotAsync(solution);
 
         object resultObject;
@@ -549,7 +547,6 @@ public class Program
     {
         var findings = new List<object>();
 
-        // Build quick FQN-to-project lookup for source type resolution
         var fqnToProject = snapshot.Symbols
             .ToDictionary(s => s.MetadataName, s => s.Project);
 
@@ -562,7 +559,6 @@ public class Program
 
             string? bucket = null;
 
-            // ── not_determinable: ControllerBase, EF Migration, IHostedService ──
             var isController = symbol.Kind == "controller" && symbol.KindProvenance == "compiler_proved";
             var isMigration = symbol.File.Contains("Migrations/", StringComparison.OrdinalIgnoreCase);
             var isHostedService = symbol.MetadataName.Contains("HostedService") || symbol.MetadataName.Contains("BackgroundService");
@@ -571,7 +567,7 @@ public class Program
             {
                 bucket = "not_determinable";
             }
-            // ── test_only: all incoming edges come from test/spec projects ──
+
             else if (incomingCount > 0)
             {
                 var sourceProjects = incomingList!
@@ -589,7 +585,7 @@ public class Program
                     bucket = "test_only";
                 }
             }
-            // ── dead: no structural incoming references ──
+
             else if (incomingCount == 0)
             {
                 bucket = "dead";
@@ -597,7 +593,6 @@ public class Program
 
             if (bucket == null) continue;
 
-            // Apply --project= filter (incoming count reflects the full graph, not the filter)
             if (projectFilter != null && !string.Equals(symbol.Project, projectFilter, StringComparison.OrdinalIgnoreCase))
                 continue;
 
@@ -637,7 +632,6 @@ public class Program
         {
             var fqn = symbol.MetadataName;
 
-            // ── incoming type dependency count ──
             List<string>? incomingList = null;
             int incomingCount = 0;
             if (snapshot.IncomingEdges.TryGetValue(fqn, out var rawList))
@@ -646,7 +640,6 @@ public class Program
                 incomingCount = rawList.Distinct().Count();
             }
 
-            // ── referencing project count ──
             var referencingProjectCount = incomingList != null
                 ? incomingList.Distinct()
                     .Select(src => fqnToProject.TryGetValue(src, out var p) ? p : null)
@@ -656,10 +649,8 @@ public class Program
                     .Count()
                 : 0;
 
-            // ── outgoing type dependency count ──
             var outgoingCount = symbol.OutgoingTypeNames.Count;
 
-            // ── threshold rules (any single rule triggers candidacy) ──
             var complexityRules = new List<string>();
 
             if (incomingCount >= highIncomingThreshold)
@@ -677,7 +668,6 @@ public class Program
             if (complexityRules.Count == 0)
                 continue;
 
-            // ── scaffold file management ──
             var simpleName = fqn.Split('.').Last();
             var scaffoldFileName = $"{simpleName}-scaffold.json";
             var scaffoldFullPath = Path.Combine(CodeAuditDir, scaffoldFileName);
@@ -695,17 +685,17 @@ public class Program
 
                     if (existingStatus == "scaffold")
                     {
-                        shouldWrite = true;  // overwrite to refresh counts
+                        shouldWrite = true;
                         scaffoldsWritten++;
                     }
                     else
                     {
-                        scaffoldsSkipped++;  // human-promoted, never overwrite
+                        scaffoldsSkipped++;
                     }
                 }
                 catch
                 {
-                    shouldWrite = true;  // unparseable, overwrite
+                    shouldWrite = true;
                     scaffoldsWritten++;
                 }
             }
@@ -742,7 +732,6 @@ public class Program
                 sideEffects.Add(GetRelativePath(scaffoldFullPath));
             }
 
-            // ── finding JSON shape ──
             findings.Add(new
             {
                 symbol = fqn,
@@ -767,10 +756,8 @@ public class Program
     {
         var findings = new List<object>();
 
-        // Build lookup: FQN → SymbolRecord
         var fqnToSymbol = snapshot.Symbols.ToDictionary(s => s.MetadataName, s => s);
 
-        // Build deduplicated incoming-count cache
         var incomingCount = new Dictionary<string, int>();
         foreach (var s in snapshot.Symbols)
         {
@@ -780,14 +767,12 @@ public class Program
                 : 0;
         }
 
-        // ── Collect all chains via recursive walk ──
         var allChains = new List<(List<string> nodes, bool cycleDetected)>();
 
         foreach (var symbol in snapshot.Symbols)
         {
             var fqn = symbol.MetadataName;
 
-            // Root: a type whose incomingTypeDependencyCount is NOT 1
             if (incomingCount[fqn] == 1)
                 continue;
 
@@ -795,7 +780,7 @@ public class Program
 
             foreach (var nextFqn in rootSymbol.OutgoingTypeNames)
             {
-                // Only follow if the target exists in our symbols and has exactly one incoming edge
+
                 if (!fqnToSymbol.TryGetValue(nextFqn, out _))
                     continue;
                 if (incomingCount[nextFqn] != 1)
@@ -807,7 +792,6 @@ public class Program
             }
         }
 
-        // ── Deduplication: remove strict suffixes ──
         allChains = allChains
             .OrderByDescending(c => c.nodes.Count)
             .ToList();
@@ -820,7 +804,6 @@ public class Program
                 deduped.Add(candidate);
         }
 
-        // ── Build findings ──
         var depthBlindSpots = new List<object>
         {
             new { vector = "interface_polymorphism", determinability = "not_determinable" },
@@ -876,7 +859,7 @@ public class Program
 
             if (visited.Contains(nextFqn))
             {
-                // Cycle detected — record chain including the cycle node and stop
+
                 var cycleChain = new List<string>(chain) { nextFqn };
                 if (cycleChain.Count >= 3)
                     results.Add((cycleChain, true));
@@ -888,7 +871,7 @@ public class Program
 
             if (chain.Count >= 10)
             {
-                // Cap reached — record as-is
+
                 if (chain.Count >= 3)
                     results.Add((new List<string>(chain), false));
             }
@@ -901,7 +884,6 @@ public class Program
             visited.Remove(nextFqn);
         }
 
-        // Leaf: no valid children (but chain is long enough to report)
         if (!foundAny && chain.Count >= 3)
             results.Add((new List<string>(chain), false));
     }
@@ -923,7 +905,6 @@ public class Program
             new { vector = "interface_polymorphism", determinability = "not_determinable" }
         };
 
-        // Group symbols by Kind, sort each group for stable pair ordering
         var kindGroups = snapshot.Symbols
             .GroupBy(s => s.Kind)
             .ToDictionary(g => g.Key, g => g.OrderBy(s => s.MetadataName).ToList());
@@ -1443,7 +1424,6 @@ public class Program
         var symbols = new List<SymbolRecord>();
         var outgoingEdges = new Dictionary<string, List<string>>();
 
-        // First pass: collect all symbols and their outgoing type names
         foreach (var project in solution.Projects)
         {
             var compilation = await project.GetCompilationAsync();
@@ -1465,29 +1445,23 @@ public class Program
                     if (model.GetDeclaredSymbol(typeDecl) is not INamedTypeSymbol namedSymbol)
                         continue;
 
-                    // Skip compiler-generated symbols
                     if (namedSymbol.Locations.Any(loc => loc.IsInMetadata))
                         continue;
 
-                    // Get the first source location for line number
                     var line = namedSymbol.Locations
                         .Where(loc => loc.IsInSource)
                         .Select(loc => loc.GetLineSpan().StartLinePosition.Line + 1)
                         .FirstOrDefault();
 
-                    // Get classification info
                     var (kind, kindRule, kindProvenance) = ClassifyType(namedSymbol, compilation);
 
-                    // Get outgoing type names
                     var outgoingTypeNames = CollectExternalTypeFqns(namedSymbol).ToList();
 
-                    // Add to outgoingEdges dictionary for later inversion
                     var symbolId = namedSymbol.ToDisplayString();
                     if (!outgoingEdges.ContainsKey(symbolId))
                         outgoingEdges[symbolId] = new List<string>();
                     outgoingEdges[symbolId].AddRange(outgoingTypeNames);
 
-                    // Create SymbolRecord
                     var symbolRecord = new SymbolRecord(
                         MetadataName: symbolId,
                         Kind: kind,
@@ -1507,7 +1481,6 @@ public class Program
                 }
             }
 
-            // Add project info
             var projectCatalog = new ProjectCatalog(
                 Name: project.Name,
                 AssemblyName: project.AssemblyName?.ToString() ?? "",
@@ -1517,7 +1490,6 @@ public class Program
             projects.Add(projectCatalog);
         }
 
-        // Second pass: invert outgoingEdges to build incomingEdges
         var incomingEdges = new Dictionary<string, List<string>>();
         foreach (var (sourceSymbol, targetSymbols) in outgoingEdges)
         {
@@ -1548,7 +1520,6 @@ public class Program
         var solution = await LoadSolutionAsync();
         var snapshot = await BuildDiscoverySnapshotAsync(solution);
 
-        // Filter by kind if specified
         var filteredSymbols = snapshot.Symbols;
         if (kindFilter != null)
         {
@@ -1556,18 +1527,17 @@ public class Program
             filteredSymbols = filteredSymbols.Where(s => filters.Contains(s.Kind, StringComparer.OrdinalIgnoreCase)).ToList();
         }
 
-        // Convert to old DiscoveredType format for backward compatibility
         var allTypes = filteredSymbols.Select(s => new DiscoveredType(
             SymbolId: s.MetadataName,
-            Kind: "unknown", // This would need to be derived from the kind
+            Kind: "unknown",
             KindCategory: s.Kind,
             Namespace: s.Namespace,
             Project: s.Project,
             SourceFile: s.File,
-            Accessibility: "Public", // This would need to be derived
-            Inherits: null, // This would need to be derived
-            Implements: new List<string>(), // This would need to be derived
-            Dependencies: new List<string>() // This would need to be derived
+            Accessibility: "Public",
+            Inherits: null,
+            Implements: new List<string>(),
+            Dependencies: new List<string>()
         )).ToList();
 
         var byKindCategory = allTypes.GroupBy(t => t.KindCategory)
@@ -1640,7 +1610,6 @@ public class Program
         var fanOut = outgoingEdges.TryGetValue(symbolId, out var outSet) ? outSet : new HashSet<string>();
         var fanIn = incomingEdges.TryGetValue(symbolId, out var inSet) ? inSet : new HashSet<string>();
 
-        // Calculate new tier rules
         var incomingTypeDependencyCount = fanIn.Count;
         var outgoingTypeDependencyCount = fanOut.Count;
         var referencingProjectCount = incomingEdges
@@ -1649,7 +1618,6 @@ public class Program
             .Distinct()
             .Count();
 
-        // New tier rules (first match wins)
         if (externallyExposed)
             return "public_surface";
 
@@ -1659,7 +1627,6 @@ public class Program
         if (incomingTypeDependencyCount > 0)
             return "project_local";
 
-        // isolated: incomingTypeDependencyCount == 0 and not exposed
         return "isolated";
     }
 
@@ -1702,7 +1669,6 @@ public class Program
         var solution = await LoadSolutionAsync();
         var snapshot = await BuildDiscoverySnapshotAsync(solution);
 
-        // Find the symbol in the snapshot
         var symbolRecord = snapshot.Symbols.FirstOrDefault(s => s.MetadataName == symbolFilter);
         if (symbolRecord == null)
         {
@@ -1713,14 +1679,12 @@ public class Program
             return;
         }
 
-        // Build outgoingEdges from snapshot for backward compatibility
         var outgoingEdges = new Dictionary<string, HashSet<string>>();
         foreach (var symbol in snapshot.Symbols)
         {
             outgoingEdges[symbol.MetadataName] = new HashSet<string>(symbol.OutgoingTypeNames);
         }
 
-        // Build incomingEdges from snapshot
         var incomingEdges = new Dictionary<string, HashSet<string>>();
         foreach (var (sourceSymbol, targetSymbols) in outgoingEdges)
         {
@@ -1732,27 +1696,24 @@ public class Program
             }
         }
 
-        // Build typeToProject from snapshot
         var typeToProject = new Dictionary<string, string>();
         foreach (var symbol in snapshot.Symbols)
         {
             typeToProject[symbol.MetadataName] = symbol.Project;
         }
 
-        // Build typeToAccessibility from snapshot (approximate)
         var typeToAccessibility = new Dictionary<string, string>();
         foreach (var symbol in snapshot.Symbols)
         {
-            // We don't have accessibility info in SymbolRecord, so we'll use a default
+
             typeToAccessibility[symbol.MetadataName] = "Public";
         }
 
         var fanIn = BuildFanSummary(symbolFilter, incomingEdges, typeToProject);
         var fanOut = BuildFanSummary(symbolFilter, outgoingEdges, typeToProject);
 
-        // Determine externallyExposed: controller descendant OR [ApiController] attribute
         var externallyExposed = symbolRecord.Kind == "controller";
-        
+
         var tier = ComputeComplexityTier(
             symbolFilter, typeToProject[symbolFilter], typeToAccessibility[symbolFilter],
             outgoingEdges, incomingEdges, typeToProject, externallyExposed);
@@ -1902,7 +1863,7 @@ public class Program
                     }
                 }
             }
-            catch { /* best effort */ }
+            catch {  }
 
             var lineSpan = refLoc.Location.GetLineSpan();
             referenceDetails.Add(new ReferenceDetail(
@@ -1932,7 +1893,6 @@ public class Program
             })
             .ToList();
 
-        // --- Derived summary fields (F2.1) ---
         var uniqueFilesSet = new HashSet<string>();
         var uniqueProjectsSet = new HashSet<string>();
         var uniqueContainingSymbolsSet = new HashSet<string>();
@@ -1979,7 +1939,6 @@ public class Program
             }
         }
 
-        // Self-reference: count references whose file+line matches a declaration site
         var declSiteKeys = new HashSet<string>();
         foreach (var decl in declarationSites)
         {
@@ -2301,7 +2260,7 @@ public class Program
         var sourceFileToSymbolIds = new Dictionary<string, List<string>>();
         var curatedFingerprints = new Dictionary<string, (string? Surface, string? Dependency, bool IsV1)>();
         var dependentSymbolIds = new Dictionary<string, List<string>>();
-        
+
         var semanticFiles = Directory.GetFiles(SemanticDir, "*.semantic.json");
         foreach (var sf in semanticFiles)
         {
@@ -2451,7 +2410,7 @@ public class Program
         {
             processed.Add(dirtyFile);
         }
-        
+
         var remaining = new DirtyManifest(
             SchemaVersion: SchemaVersion,
             DirtyFiles: (manifest.DirtyFiles ?? []).Except(processed).ToList(),
@@ -2490,7 +2449,7 @@ public class Program
         else
             Console.WriteLine("Sweep complete.");
     }
-    
+
     private static async Task<bool> FlagSemanticStaleAsync(string symbolId, string reason)
     {
         var semanticPath = Path.Combine(SemanticDir, $"{SanitizeId(symbolId)}.semantic.json");
@@ -2573,12 +2532,103 @@ public class Program
         }
     }
 
+    private static object BuildImpactTierFieldProvenance()
+    {
+        return new
+        {
+            affected = ProvenanceCacheSuggests,
+            incomingTypeDependencyCount = ProvenanceCompilerProved,
+            referencingProjectCount = ProvenanceCompilerProved,
+            externallyExposed = ProvenanceCompilerProved,
+            tier = ProvenanceIndexerObserved,
+            tierRule = ProvenanceIndexerObserved
+        };
+    }
+
+    private static object BuildImpactEntry(
+        string semanticFile, string reason, string via, string provenance, string symbolId,
+        Dictionary<string, SymbolRecord>? fqnToSymbol,
+        Dictionary<string, string>? fqnToProject,
+        Dictionary<string, List<string>>? incomingEdges)
+    {
+        if (fqnToSymbol == null || !fqnToSymbol.TryGetValue(symbolId, out var symbol))
+        {
+            return new
+            {
+                semanticFile,
+                reason,
+                via,
+                provenance,
+                incomingTypeDependencyCount = (int?)null,
+                referencingProjectCount = (int?)null,
+                externallyExposed = (bool?)null,
+                tier = (string?)null,
+                tierRule = (string?)null
+            };
+        }
+
+        List<string>? incomingList = null;
+        var incomingCount = 0;
+        if (incomingEdges!.TryGetValue(symbolId, out var rawList))
+        {
+            incomingList = rawList;
+            incomingCount = rawList.Distinct().Count();
+        }
+
+        var referencingProjectCount = incomingList != null
+            ? incomingList.Distinct()
+                .Select(src => fqnToProject!.TryGetValue(src, out var p) ? p : null)
+                .Where(p => p != null)
+                .Cast<string>()
+                .Distinct()
+                .Count()
+            : 0;
+
+        var externallyExposed = symbol.Kind == "controller" && symbol.KindProvenance == "compiler_proved";
+
+        string tier;
+        string tierRule;
+        if (externallyExposed)
+        {
+            tier = "public_surface";
+            tierRule = "externally exposed (controller, compiler_proved)";
+        }
+        else if (referencingProjectCount >= CrossProjectMinCount)
+        {
+            tier = "cross_project";
+            tierRule = $"referencingProjectCount >= {CrossProjectMinCount}";
+        }
+        else if (incomingCount > 0)
+        {
+            tier = "project_local";
+            tierRule = "incomingTypeDependencyCount > 0";
+        }
+        else
+        {
+            tier = "isolated";
+            tierRule = "no incoming dependencies and not externally exposed";
+        }
+
+        return new
+        {
+            semanticFile,
+            reason,
+            via,
+            provenance,
+            incomingTypeDependencyCount = (int?)incomingCount,
+            referencingProjectCount = (int?)referencingProjectCount,
+            externallyExposed = (bool?)externallyExposed,
+            tier = (string?)tier,
+            tierRule = (string?)tierRule
+        };
+    }
+
     private static async Task ImpactModeAsync()
     {
         if (!File.Exists(DirtyFilePath))
         {
             if (_useJson)
-                WriteJsonResult("impact", new { affected = new List<object>(), provenance = ProvenanceIndexerObserved, fieldProvenance = new { affected = ProvenanceIndexerObserved } });
+                WriteJsonResult("impact", new { affected = new List<object>(), provenance = ProvenanceIndexerObserved, fieldProvenance = new { affected = ProvenanceIndexerObserved }, tiersAvailable = false });
             else
                 Console.WriteLine("[]");
             return;
@@ -2590,10 +2640,30 @@ public class Program
         if (manifest == null || ((manifest.DirtyFiles?.Count ?? 0) == 0 && (manifest.DeletedFiles?.Count ?? 0) == 0))
         {
             if (_useJson)
-                WriteJsonResult("impact", new { affected = new List<object>(), provenance = ProvenanceIndexerObserved, fieldProvenance = new { affected = ProvenanceIndexerObserved } });
+                WriteJsonResult("impact", new { affected = new List<object>(), provenance = ProvenanceIndexerObserved, fieldProvenance = new { affected = ProvenanceIndexerObserved }, tiersAvailable = false });
             else
                 Console.WriteLine("[]");
             return;
+        }
+
+        Dictionary<string, SymbolRecord>? fqnToSymbol = null;
+        Dictionary<string, string>? fqnToProject = null;
+        Dictionary<string, List<string>>? incomingEdges = null;
+        var tiersAvailable = false;
+
+        try
+        {
+            var solution = await LoadSolutionAsync();
+            var snapshot = await BuildDiscoverySnapshotAsync(solution);
+
+            fqnToSymbol = snapshot.Symbols.ToDictionary(s => s.MetadataName, s => s);
+            fqnToProject = snapshot.Symbols.ToDictionary(s => s.MetadataName, s => s.Project);
+            incomingEdges = snapshot.IncomingEdges;
+            tiersAvailable = true;
+        }
+        catch
+        {
+            tiersAvailable = false;
         }
 
         var affectedFiles = new HashSet<string>(
@@ -2617,7 +2687,9 @@ public class Program
 
             if (affectedFiles.Contains(sourceFile))
             {
-                results.Add(new { semanticFile = $"{SanitizeId(symbolId)}.semantic.json", reason = "direct", via = symbolId, provenance = ProvenanceCompilerProved });
+                results.Add(BuildImpactEntry(
+                    $"{SanitizeId(symbolId)}.semantic.json", "direct", symbolId, ProvenanceCompilerProved, symbolId,
+                    fqnToSymbol, fqnToProject, incomingEdges));
                 continue;
             }
 
@@ -2639,7 +2711,9 @@ public class Program
                         var depSource = depNode?["facts"]?["sourceFile"]?.GetValue<string>();
                         if (depSource != null && affectedFiles.Contains(depSource))
                         {
-                            results.Add(new { semanticFile = $"{SanitizeId(symbolId)}.semantic.json", reason = "dependency", via = depSymbol, provenance = ProvenanceCacheSuggests });
+                            results.Add(BuildImpactEntry(
+                                $"{SanitizeId(symbolId)}.semantic.json", "dependency", depSymbol, ProvenanceCacheSuggests, symbolId,
+                                fqnToSymbol, fqnToProject, incomingEdges));
                             break;
                         }
                     }
@@ -2649,7 +2723,7 @@ public class Program
         }
 
         if (_useJson)
-            WriteJsonResult("impact", new { affected = results, provenance = ProvenanceIndexerObserved, fieldProvenance = new { affected = ProvenanceCacheSuggests } });
+            WriteJsonResult("impact", new { affected = results, provenance = ProvenanceIndexerObserved, fieldProvenance = BuildImpactTierFieldProvenance(), tiersAvailable });
         else
         {
             var output = JsonSerializer.Serialize(results, JsonOptions);
@@ -2771,8 +2845,6 @@ public class Program
             provenance = ProvenanceCompilerProved
         });
     }
-
-    // ──────────── Phase 3: Diagnostic Baseline Infrastructure ────────────
 
     private static async Task<List<DiagnosticEntry>> SaveBaselineAsync(Solution solution, string path)
     {
@@ -2912,8 +2984,6 @@ public class Program
         return baseline;
     }
 
-    // ──────────── 3.1: Resolve (near-match symbol lookup) ────────────
-
     private static async Task<List<ResolveCandidate>> ResolveSymbolAsync(Solution solution, string partialName)
     {
         var candidates = new List<ResolveCandidate>();
@@ -2941,7 +3011,7 @@ public class Program
                         continue;
 
                     var displayString = namedSymbol.ToDisplayString();
-                    if (!seen.Add(displayString)) continue; // deduplicate
+                    if (!seen.Add(displayString)) continue;
 
                     int score;
                     string scoreReason;
@@ -2994,8 +3064,6 @@ public class Program
         return candidates.OrderByDescending(c => c.Score).Take(10).ToList();
     }
 
-    // ──────────── 3.3: Simulate Delete ────────────
-
     private static List<object> GetSimulateBlindSpots()
     {
         return new List<object>
@@ -3040,7 +3108,7 @@ public class Program
                     results.Add(new { file = GetRelativePath(file), fields = foundFields });
                 }
             }
-            catch { /* skip unparseable */ }
+            catch {  }
         }
 
         return results;
@@ -3092,7 +3160,6 @@ public class Program
             return;
         }
 
-        // Step 2: Reference sites
         var referencedSymbols = await SymbolFinder.FindReferencesAsync(symbol, solution);
         var allRefs = referencedSymbols.SelectMany(r => r.Locations).ToList();
         var referenceSites = allRefs.Select(r => new
@@ -3103,7 +3170,6 @@ public class Program
         }).ToList();
         var referenceSiteCount = referenceSites.Count;
 
-        // Step 3: External exposure
         bool externallyExposed = false;
         string? externallyExposedRule = null;
 
@@ -3120,7 +3186,6 @@ public class Program
             externallyExposedRule = "has ApiController attribute";
         }
 
-        // Step 4: Removal recompile
         var docIds = symbol.Locations
             .Where(l => l.IsInSource)
             .Select(l => solution.GetDocument(l.SourceTree))
@@ -3133,10 +3198,8 @@ public class Program
         var currentDiagnostics = await CompileAndCollectDiagnosticsAsync(removedSolution);
         var (addedDiagnostics, _) = DiffDiagnostics(baseline, currentDiagnostics);
 
-        // Step 5: Cache impact
         var cacheImpact = ScanCacheImpact(fqn);
 
-        // Step 6: Verdict
         string verdict;
         string verdictRule;
 
@@ -3180,8 +3243,6 @@ public class Program
         });
     }
 
-    // ──────────── 3.4: Simulate Rename ────────────
-
     private static async Task HandleSimulateRenameAsync(string fqn, string newName)
     {
         var solution = await LoadSolutionAsync();
@@ -3200,7 +3261,6 @@ public class Program
             return;
         }
 
-        // Step 2: Collision check
         var ns = symbol.ContainingNamespace;
         string newFqn = ns != null && !ns.IsGlobalNamespace
             ? ns.ToDisplayString() + "." + newName
@@ -3221,10 +3281,8 @@ public class Program
             return;
         }
 
-        // Step 3: Rename
         var renamedSolution = await Renamer.RenameSymbolAsync(solution, symbol, new SymbolRenameOptions(), newName);
 
-        // Collect changed documents with diff info
         var changedDocuments = new List<object>();
         var projectChanges = renamedSolution.GetChanges(solution).GetProjectChanges();
         foreach (var projectChange in projectChanges)
@@ -3257,14 +3315,11 @@ public class Program
             }
         }
 
-        // Step 4: Recompile
         var currentDiagnostics = await CompileAndCollectDiagnosticsAsync(renamedSolution);
         var (addedDiagnostics, _) = DiffDiagnostics(baseline, currentDiagnostics);
 
-        // Step 6: Cache impact (using old FQN)
         var cacheImpact = ScanCacheImpact(fqn);
 
-        // Step 7: Verdict
         string verdict;
         string verdictRule;
 
@@ -3297,14 +3352,11 @@ public class Program
         });
     }
 
-    // ──────────── F5 Stream B: Simulate Move ────────────
-
     private static async Task HandleSimulateMoveAsync(string fqn, string targetNamespace, string? targetProjectArg)
     {
         var solution = await LoadSolutionAsync();
         var baseline = EnsureBaselineFreshness();
 
-        // --- Step 1: Symbol resolution ---
         var (symbol, compilation) = await FindTypeSymbolAsync(solution, fqn);
         if (symbol == null)
         {
@@ -3319,7 +3371,6 @@ public class Program
             return;
         }
 
-        // --- Step 2: Move plan derivation ---
         var simpleName = symbol.Name;
         var sourceNamespace = symbol.ContainingNamespace?.ToDisplayString() ?? "";
         if (symbol.ContainingNamespace?.IsGlobalNamespace == true)
@@ -3342,7 +3393,6 @@ public class Program
         var isGlobalTarget = string.IsNullOrEmpty(targetNamespace) || targetNamespace == "<global>";
         var newFqn = isGlobalTarget ? simpleName : targetNamespace + "." + simpleName;
 
-        // --- Step 3: Resolve target project ---
         string? resolvedTargetProject;
 
         if (!string.IsNullOrEmpty(targetProjectArg))
@@ -3351,8 +3401,7 @@ public class Program
         }
         else
         {
-            // Infer target project by matching root namespace prefix.
-            // Use project.DefaultNamespace, fall back to project.Name.
+
             var matchedProjects = new List<(string projectName, string rootNamespace)>();
             foreach (var project in solution.Projects)
             {
@@ -3400,7 +3449,6 @@ public class Program
             return;
         }
 
-        // --- No-op check ---
         if (sourceNamespace == targetNamespace && sourceProject == resolvedTargetProject)
         {
             WriteJsonResult("simulate-move", new
@@ -3411,31 +3459,23 @@ public class Program
             return;
         }
 
-        // --- Cross-project flag ---
         bool isCrossProject = !string.IsNullOrEmpty(sourceProject) &&
                               sourceProject != resolvedTargetProject;
 
-        // --- Build snapshot and project graph for proof checks ---
         var snapshot = await BuildDiscoverySnapshotAsync(solution);
         var projectGraph = BuildProjectReferenceGraph(solution);
 
-        // Build FQN-to-project lookup from snapshot
         var fqnToProject = new Dictionary<string, string>();
         foreach (var s in snapshot.Symbols)
             fqnToProject[s.MetadataName] = s.Project;
 
-        // --- Proof blocks ---
         string? verdict = null;
         string? verdictRule = null;
 
-        // ═══════════════════════════════════════════════════════
-        // Step 4: Collision proof (always first; always emitted)
-        // ═══════════════════════════════════════════════════════
         bool collision;
         string? collidingSymbolFqn;
         {
-            // Search across all projects for a type with the same simple name in the target namespace.
-            // Use FindTypeSymbolAsync for exact match; also walk snapshot for broader coverage.
+
             var (collidingType, _) = await FindTypeSymbolAsync(solution, newFqn);
             if (collidingType != null && !SymbolEqualityComparer.Default.Equals(collidingType, symbol))
             {
@@ -3444,7 +3484,7 @@ public class Program
             }
             else
             {
-                // Fallback: check snapshot for any type in target namespace with same simple name
+
                 var snapshotCollision = snapshot.Symbols.FirstOrDefault(s =>
                     s.Namespace == targetNamespace &&
                     GetSimpleName(s.MetadataName) == simpleName &&
@@ -3507,22 +3547,18 @@ public class Program
             return;
         }
 
-        // ═══════════════════════════════════════════════════════
-        // Step 5: Dependency visibility proof
-        // ═══════════════════════════════════════════════════════
         var missingProjectReferences = new List<object>();
         bool depWouldIntroduceCycle = false;
 
         if (!isCrossProject)
         {
-            // Same project: no new references required
+
             depWouldIntroduceCycle = false;
         }
         else
         {
             var externalTypeFqns = CollectExternalTypeFqns(symbol);
 
-            // Already-referenced projects from target
             var existingRefs = projectGraph.TryGetValue(resolvedTargetProject!, out var refs)
                 ? refs
                 : new HashSet<string>();
@@ -3532,12 +3568,10 @@ public class Program
                 if (!fqnToProject.TryGetValue(extFqn, out var depProject))
                     continue;
                 if (depProject == resolvedTargetProject)
-                    continue; // same project, no reference needed
+                    continue;
                 if (existingRefs.Contains(depProject))
-                    continue; // already referenced
+                    continue;
 
-                // Would adding target -> depProject create a cycle?
-                // A cycle exists if depProject can already reach targetProject.
                 var wouldCycle = HasPathInProjectGraph(projectGraph, depProject, resolvedTargetProject!);
 
                 missingProjectReferences.Add(new
@@ -3591,26 +3625,23 @@ public class Program
             return;
         }
 
-        // ═══════════════════════════════════════════════════════
-        // Step 6: Referencer visibility proof
-        // ═══════════════════════════════════════════════════════
         var visibilityGaps = new List<object>();
         bool refWouldIntroduceCycle = false;
 
         {
-            // Source caller set from snapshot.IncomingEdges
+
             var callerFqns = snapshot.IncomingEdges.TryGetValue(fqn, out var incoming)
                 ? incoming.Distinct().ToList()
                 : new List<string>();
 
             if (!isCrossProject)
             {
-                // Same project: all callers retain visibility
+
                 refWouldIntroduceCycle = false;
             }
             else
             {
-                // Check if source project already references target project
+
                 var sourceRefs = projectGraph.TryGetValue(sourceProject, out var sRefs)
                     ? sRefs
                     : new HashSet<string>();
@@ -3618,13 +3649,12 @@ public class Program
 
                 if (!hasRefToTarget)
                 {
-                    // Would adding source -> target create a cycle?
-                    // A cycle exists if target can already reach source.
+
                     refWouldIntroduceCycle = HasPathInProjectGraph(projectGraph, resolvedTargetProject!, sourceProject);
 
                     if (!refWouldIntroduceCycle)
                     {
-                        // Record visibility gaps for callers in the source project
+
                         foreach (var callerFqn in callerFqns)
                         {
                             if (fqnToProject.TryGetValue(callerFqn, out var callerProject) &&
@@ -3656,8 +3686,6 @@ public class Program
             verdict = "referencer_not_visible";
             verdictRule = "callers would lose visibility after the move, and the project reference change required to restore it would introduce a cycle";
 
-            // Early-exit: match collision/dependency_not_visible pattern.
-            // No recompile, no cacheImpact scan.
             WriteJsonResult("simulate-move", new
             {
                 command = "simulate-move",
@@ -3677,9 +3705,6 @@ public class Program
             return;
         }
 
-        // ═══════════════════════════════════════════════════════
-        // Step 7: In-memory rename + recompile (Stream C)
-        // ═══════════════════════════════════════════════════════
         List<object> changedDocuments = new();
         List<DiagnosticEntry> addedDiagnostics = new();
         List<object>? cacheImpact = null;
@@ -3687,11 +3712,10 @@ public class Program
 
         if (verdict == null)
         {
-            // Apply the move in-memory
+
             (solution, changedDocuments) = await ApplyInMemoryMoveAsync(
                 solution, fqn, newFqn, symbol, sourceNamespace, targetNamespace, sourceDocIds);
 
-            // Collect affected project names for recompile
             foreach (var cd in changedDocuments)
             {
                 var file = cd.GetType().GetProperty("file")?.GetValue(cd)?.ToString();
@@ -3711,15 +3735,11 @@ public class Program
                 }
             }
 
-            // Recompile affected projects
             var currentDiagnostics = await CompileAndCollectDiagnosticsAsync(solution);
             (addedDiagnostics, _) = DiffDiagnostics(baseline, currentDiagnostics);
 
-            // Step 7: Cache impact for move
             cacheImpact = ScanCacheImpactForMove(fqn, newFqn);
 
-            // Step 8: Verdict (evaluated in order; first match wins)
-            // collision → dependency_not_visible → referencer_not_visible already handled above
             if (addedDiagnostics.Count > 0)
             {
                 verdict = "introduces_errors";
@@ -3755,12 +3775,6 @@ public class Program
         });
     }
 
-    // ──────────── Simulate Move helpers ────────────
-
-    /// <summary>
-    /// Build a directed graph of project references.
-    /// Key: project name. Value: set of project names that this project directly references.
-    /// </summary>
     private static Dictionary<string, HashSet<string>> BuildProjectReferenceGraph(Solution solution)
     {
         var projectIdToName = solution.Projects.ToDictionary(p => p.Id, p => p.Name);
@@ -3780,10 +3794,6 @@ public class Program
         return graph;
     }
 
-    /// <summary>
-    /// Iterative DFS: returns true if there is a directed path from fromProject to toProject
-    /// in the project reference graph.
-    /// </summary>
     private static bool HasPathInProjectGraph(
         Dictionary<string, HashSet<string>> graph,
         string fromProject,
@@ -3817,10 +3827,6 @@ public class Program
         return false;
     }
 
-    /// <summary>
-    /// Extract the simple name (last segment after the final dot) from a fully-qualified
-    /// metadata name. Strips generic arity suffix (backtick) for comparison purposes.
-    /// </summary>
     private static string GetSimpleName(string metadataName)
     {
         var lastDot = metadataName.LastIndexOf('.');
@@ -3829,11 +3835,6 @@ public class Program
         return backtick >= 0 ? simple[..backtick] : simple;
     }
 
-    /// <summary>
-    /// Apply the in-memory move: change namespace declarations in source documents,
-    /// update using directives and qualified-name references throughout the solution.
-    /// Returns the modified solution and changed-document summaries (line counts only).
-    /// </summary>
     private static async Task<(Solution solution, List<object> changedDocuments)> ApplyInMemoryMoveAsync(
         Solution solution,
         string oldFqn,
@@ -3843,69 +3844,101 @@ public class Program
         string targetNamespace,
         HashSet<DocumentId> sourceDocIds)
     {
-        var changedDocuments = new List<object>();
-        var docChanges = new Dictionary<DocumentId, SyntaxNode>();
 
-        foreach (var project in solution.Projects)
+        if (sourceNamespace == targetNamespace)
+            return (solution, new List<object>());
+
+        string? tempName = null;
+        for (var attempt = 0; attempt < 5 && tempName == null; attempt++)
         {
-            foreach (var doc in project.Documents)
+            var candidate = symbol.Name + "_" + Guid.NewGuid().ToString("N")[..8];
+            var (collidingTemp, _) = await FindTypeSymbolAsync(solution, $"{sourceNamespace}.{candidate}");
+            if (collidingTemp == null)
+                tempName = candidate;
+        }
+        tempName ??= symbol.Name + "_" + Guid.NewGuid().ToString("N")[..8];
+
+        var tempSolution = await Renamer.RenameSymbolAsync(solution, symbol, new SymbolRenameOptions(), tempName);
+
+        var midSolution = tempSolution;
+
+        var oldTempQualifiedName = $"{sourceNamespace}.{tempName}";
+        var newTempQualifiedName = $"{targetNamespace}.{tempName}";
+
+        var allDocIds = midSolution.Projects
+            .SelectMany(p => p.Documents.Select(d => d.Id))
+            .Distinct()
+            .ToList();
+
+        foreach (var docId in allDocIds)
+        {
+            var doc = midSolution.GetDocument(docId);
+            if (doc == null) continue;
+            var root = await doc.GetSyntaxRootAsync();
+            if (root == null) continue;
+
+            var newRoot = root;
+
+            if (sourceDocIds.Contains(docId))
+                newRoot = ChangeNamespaceDeclarations(newRoot, sourceNamespace, targetNamespace);
+
+            newRoot = UpdateUsingDirectives(newRoot, sourceNamespace, targetNamespace);
+
+            newRoot = ReplaceQualifiedName(newRoot, oldTempQualifiedName, newTempQualifiedName);
+
+            if (newRoot != root)
+                midSolution = midSolution.WithDocumentSyntaxRoot(docId, newRoot);
+        }
+
+        var (movedSymbol, _) = await FindTypeSymbolAsync(midSolution, targetNamespace + "." + tempName);
+        if (movedSymbol == null)
+        {
+            Console.Error.WriteLine(
+                $"Warning: could not re-resolve '{targetNamespace}.{tempName}' after namespace move; returning without final rename.");
+            return (midSolution, new List<object>());
+        }
+
+        var finalSolution = await Renamer.RenameSymbolAsync(midSolution, movedSymbol, new SymbolRenameOptions(), symbol.Name);
+
+        var changedDocuments = new List<object>();
+        var projectChanges = finalSolution.GetChanges(solution).GetProjectChanges();
+        foreach (var projectChange in projectChanges)
+        {
+            foreach (var docId in projectChange.GetChangedDocuments())
             {
-                var root = await doc.GetSyntaxRootAsync();
-                if (root == null) continue;
+                var oldDoc = solution.GetDocument(docId);
+                var newDoc = finalSolution.GetDocument(docId);
+                if (oldDoc == null || newDoc == null) continue;
 
-                var oldLineCount = root.ToFullString().Split('\n').Length;
+                var oldTree = await oldDoc.GetSyntaxTreeAsync();
+                var newTree = await newDoc.GetSyntaxTreeAsync();
+                if (oldTree == null || newTree == null) continue;
 
-                var newRoot = root;
+                var oldRoot = await oldTree.GetRootAsync();
+                var newRoot = await newTree.GetRootAsync();
 
-                // 1. If this is a source document, change the enclosing namespace declaration
-                if (sourceDocIds.Contains(doc.Id) && sourceNamespace != targetNamespace)
+                var oldText = oldRoot.ToFullString();
+                var newText = newRoot.ToFullString();
+
+                var oldLines = oldText.Split('\n').Length;
+                var newLines = newText.Split('\n').Length;
+
+                changedDocuments.Add(new
                 {
-                    newRoot = ChangeNamespaceDeclarations(newRoot, sourceNamespace, targetNamespace);
-                }
-
-                // 2. Update using directives that import the old namespace
-                if (sourceNamespace != targetNamespace)
-                {
-                    newRoot = UpdateUsingDirectives(newRoot, sourceNamespace, targetNamespace);
-                }
-
-                // 3. Update qualified-name references to the type (OldNs.TypeName → NewNs.TypeName)
-                newRoot = UpdateQualifiedTypeReferences(newRoot, oldFqn, newFqn);
-
-                if (newRoot != root)
-                {
-                    docChanges[doc.Id] = newRoot;
-
-                    var newLineCount = newRoot.ToFullString().Split('\n').Length;
-                    changedDocuments.Add(new
-                    {
-                        file = GetRelativePath(doc.FilePath),
-                        addedLines = Math.Max(0, newLineCount - oldLineCount),
-                        removedLines = Math.Max(0, oldLineCount - newLineCount)
-                    });
-                }
+                    file = GetRelativePath(oldDoc.FilePath),
+                    addedLines = Math.Max(0, newLines - oldLines),
+                    removedLines = Math.Max(0, oldLines - newLines)
+                });
             }
         }
 
-        // Apply all changes to the solution
-        var resultSolution = solution;
-        foreach (var (docId, newRoot) in docChanges)
-        {
-            resultSolution = resultSolution.WithDocumentSyntaxRoot(docId, newRoot);
-        }
-
-        return (resultSolution, changedDocuments);
+        return (finalSolution, changedDocuments);
     }
 
-    /// <summary>
-    /// Replace namespace declarations whose name matches <paramref name="oldNs"/>
-    /// with <paramref name="newNs"/>. Handles both file-scoped and block-scoped declarations.
-    /// </summary>
     private static SyntaxNode ChangeNamespaceDeclarations(SyntaxNode root, string oldNs, string newNs)
     {
         var rewritten = root;
 
-        // File-scoped namespace declarations
         var fileScoped = rewritten.DescendantNodes()
             .OfType<FileScopedNamespaceDeclarationSyntax>()
             .Where(ns => ns.Name.ToString() == oldNs)
@@ -3917,7 +3950,6 @@ public class Program
             rewritten = rewritten.ReplaceNode(ns, ns.WithName(newName));
         }
 
-        // Block-scoped namespace declarations
         var blockScoped = rewritten.DescendantNodes()
             .OfType<NamespaceDeclarationSyntax>()
             .Where(ns => ns.Name.ToString() == oldNs)
@@ -3932,9 +3964,6 @@ public class Program
         return rewritten;
     }
 
-    /// <summary>
-    /// Replace using directives that reference <paramref name="oldNs"/> with <paramref name="newNs"/>.
-    /// </summary>
     private static SyntaxNode UpdateUsingDirectives(SyntaxNode root, string oldNs, string newNs)
     {
         var usings = root.DescendantNodes()
@@ -3953,22 +3982,17 @@ public class Program
         return rewritten;
     }
 
-    /// <summary>
-    /// Replace qualified-name references to the moved type (OldFullFqn → NewFullFqn)
-    /// in qualified-name expressions and simple identifier references within the solution.
-    /// </summary>
-    private static SyntaxNode UpdateQualifiedTypeReferences(SyntaxNode root, string oldFqn, string newFqn)
+    private static SyntaxNode ReplaceQualifiedName(SyntaxNode root, string oldQualifiedName, string newQualifiedName)
     {
         var rewritten = root;
 
-        // Handle QualifiedNameSyntax: e.g., OldNs.SomeType → NewNs.SomeType
         var qualifiedRefs = rewritten.DescendantNodes()
             .OfType<QualifiedNameSyntax>()
-            .Where(qn => qn.ToString() == oldFqn)
+            .Where(qn => qn.ToString() == oldQualifiedName)
             .ToList();
         foreach (var qn in qualifiedRefs)
         {
-            var newName = SyntaxFactory.ParseName(newFqn)
+            var newName = SyntaxFactory.ParseName(newQualifiedName)
                 .WithTriviaFrom(qn);
             rewritten = rewritten.ReplaceNode(qn, newName);
         }
@@ -3976,88 +4000,6 @@ public class Program
         return rewritten;
     }
 
-    /// <summary>
-    /// Scan .codeaudit/*.json cache files for the old FQN. Detect entries where
-    /// the "symbol" field matches, and separately where "collaborators" arrays
-    /// contain the old FQN. Returns entries with oldFqn, newFqn, and field discriminator.
-    /// </summary>
-    private static List<object> ScanCacheImpactForMove(string oldFqn, string newFqn)
-    {
-        var results = new List<object>();
-        if (!Directory.Exists(CodeAuditDir)) return results;
-
-        foreach (var file in Directory.GetFiles(CodeAuditDir, "*.json", SearchOption.AllDirectories))
-        {
-            var fileName = Path.GetFileName(file);
-            if (fileName == "baseline-diagnostics.json" || fileName == "dirty-files.json")
-                continue;
-
-            try
-            {
-                var text = File.ReadAllText(file);
-                var node = JsonNode.Parse(text);
-                if (node == null) continue;
-
-                // Check "symbol" field at root level
-                var symbolField = node["symbol"];
-                if (symbolField != null)
-                {
-                    var symbolValue = symbolField.GetValue<string>();
-                    if (symbolValue == oldFqn)
-                    {
-                        results.Add(new
-                        {
-                            file = GetRelativePath(file),
-                            field = "symbol",
-                            oldFqn,
-                            newFqn
-                        });
-                    }
-                }
-
-                // Also check "symbolId" field (used in some cache entries)
-                var symbolIdField = node["symbolId"];
-                if (symbolIdField != null)
-                {
-                    var symbolIdValue = symbolIdField.GetValue<string>();
-                    if (symbolIdValue == oldFqn)
-                    {
-                        // Only add if not already added via "symbol" field
-                        if (symbolField == null || symbolField.GetValue<string>() != oldFqn)
-                        {
-                            results.Add(new
-                            {
-                                file = GetRelativePath(file),
-                                field = "symbol",
-                                oldFqn,
-                                newFqn
-                            });
-                        }
-                    }
-                }
-
-                // Check "collaborators" array (nested under interpretation per cache file schema)
-                var collaborators = node["interpretation"]?["collaborators"]?.AsArray();
-                if (collaborators != null)
-                {
-                    foreach (var collab in collaborators)
-                    {
-                        var collabStr = collab?["symbol"]?.GetValue<string>();
-                        if (collabStr == oldFqn)
-                        {
-                            results.Add(new
-                            {
-                                file = GetRelativePath(file),
-                                field = "collaborators",
-                                oldFqn,
-                                newFqn
-                            });
-                            break; // one entry per file for collaborators
-                        }
-                    }
-                }
-            }
-            catch { /* skip unparseable */ }
         }
 
         return results;
@@ -4073,8 +4015,6 @@ public class Program
             new { vector = "interface_polymorphism", determinability = ProvenanceNotDeterminable }
         };
     }
-
-    // ──────────── 3.5: Prune ────────────
 
     private static async Task HandlePruneAsync()
     {
@@ -4103,7 +4043,7 @@ public class Program
                 var symbolValue = node["symbol"]?.GetValue<string>();
                 if (string.IsNullOrEmpty(symbolValue))
                 {
-                    // Also check for symbolId field
+
                     symbolValue = node["symbolId"]?.GetValue<string>();
                     if (string.IsNullOrEmpty(symbolValue))
                         continue;
@@ -4123,7 +4063,6 @@ public class Program
                     continue;
                 }
 
-                // Check for degradation if facts.sourceFile and facts.line present
                 var facts = node["facts"]?.AsObject();
                 if (facts != null)
                 {
@@ -4166,7 +4105,7 @@ public class Program
                 });
                 okCount++;
             }
-            catch { /* skip unparseable */ }
+            catch {  }
         }
 
         WriteJsonResult("prune", new
