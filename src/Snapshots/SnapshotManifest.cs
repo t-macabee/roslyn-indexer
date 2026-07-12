@@ -1,16 +1,17 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using RoslynIndexer.Storage;
 
 namespace RoslynIndexer;
 
-/// <summary>
-/// Persisted representation of one workspace snapshot.
-/// Every indexed item can be traced to exactly one version of one workspace
-/// under one compilation configuration through this manifest.
-/// </summary>
+
+
+
+
+
 public sealed class SnapshotManifest
 {
-    // ── Identity ────────────────────────────────────────────────────
+    
 
     [JsonPropertyName("snapshotId")]
     [JsonConverter(typeof(SnapshotIdConverter))]
@@ -23,34 +24,34 @@ public sealed class SnapshotManifest
     [JsonPropertyName("builtAtUtc")]
     public DateTime BuiltAtUtc { get; init; }
 
-    // ── Documents ───────────────────────────────────────────────────
+    
 
-    /// <summary>Document → content-version mapping at snapshot time.</summary>
+    
     [JsonPropertyName("documentVersions")]
     [JsonConverter(typeof(DocumentVersionMapConverter))]
     public Dictionary<DocumentId, DocumentVersionId> DocumentVersions { get; init; }
         = new Dictionary<DocumentId, DocumentVersionId>();
 
-    // ── Environment ─────────────────────────────────────────────────
+    
 
     [JsonPropertyName("sdkVersion")]
     public string SdkVersion { get; init; } = "";
 
-    /// <summary>Roslyn compiler version as a string (e.g. "4.12.0.0").</summary>
+    
     [JsonPropertyName("compilerVersion")]
     public string CompilerVersion { get; init; } = "";
 
-    /// <summary>Target framework per project (project name → TFM).</summary>
+    
     [JsonPropertyName("targetFrameworks")]
     public Dictionary<string, string> TargetFrameworks { get; init; }
         = new Dictionary<string, string>();
 
-    /// <summary>Project dependency graph (project name → direct reference names).</summary>
+    
     [JsonPropertyName("projectGraph")]
     public Dictionary<string, string[]> ProjectGraph { get; init; }
         = new Dictionary<string, string[]>();
 
-    // ── Version pins ────────────────────────────────────────────────
+    
 
     [JsonPropertyName("databaseSchemaVersion")]
     public int DatabaseSchemaVersion { get; init; }
@@ -64,18 +65,18 @@ public sealed class SnapshotManifest
     [JsonPropertyName("toolVersion")]
     public string ToolVersion { get; init; } = "";
 
-    // ── Diff chain ──────────────────────────────────────────────────
+    
 
-    /// <summary>Link to the previous snapshot to enable diff chains.</summary>
+    
     [JsonPropertyName("previousSnapshotId")]
     [JsonConverter(typeof(NullableSnapshotIdConverter))]
     public SnapshotId? PreviousSnapshotId { get; init; }
 
-    // ── Factory ────────────────────────────────────────────────────
+    
 
-    /// <summary>
-    /// Creates a <see cref="SnapshotManifest"/> from live workspace info and a snapshot ID.
-    /// </summary>
+    
+    
+    
     public static SnapshotManifest FromWorkspace(
         WorkspaceInfo workspace,
         SnapshotId snapshotId,
@@ -102,23 +103,30 @@ public sealed class SnapshotManifest
         };
     }
 
-    // ── Serialisation helpers ───────────────────────────────────────
+    
 
-    /// <summary>Default JSON options for reading/writing manifests.</summary>
+    
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    /// <summary>Writes the manifest to the specified file path.</summary>
-    public void Save(string path)
+    
+    
+    
+    public void Save(string path, IIndexStore? store = null)
     {
         var json = JsonSerializer.Serialize(this, JsonOptions);
         File.WriteAllText(path, json);
+
+        if (store != null)
+        {
+            store.SaveSnapshot(ToStorageManifest());
+        }
     }
 
-    /// <summary>Reads a manifest from the specified file path.</summary>
+    
     public static SnapshotManifest Load(string path)
     {
         var json = File.ReadAllText(path);
@@ -126,9 +134,66 @@ public sealed class SnapshotManifest
                ?? throw new InvalidOperationException("Failed to deserialize snapshot manifest.");
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  JSON converters for the identity value types
-    // ════════════════════════════════════════════════════════════════
+    
+    internal Storage.SnapshotManifest ToStorageManifest()
+    {
+        var documents = DocumentVersions.Select(kvp => new DocumentVersion(
+            documentId: kvp.Key.ToString(),
+            filePath: kvp.Key.ToString(),
+            contentHash: kvp.Value.ToString(),
+            encoding: "",
+            lineStart: "",
+            createdAtUtc: DateTime.MinValue
+        )).ToList();
+
+        return new Storage.SnapshotManifest(
+            snapshotId: SnapshotId.ToString(),
+            workspaceId: WorkspaceId.Value,
+            gitRoot: WorkspaceId.GitRoot,
+            solutionPath: WorkspaceId.SolutionPath,
+            sdkVersion: SdkVersion,
+            compilerVersion: CompilerVersion,
+            createdAtUtc: BuiltAtUtc,
+            documents: documents
+        );
+    }
+
+    
+    
+    
+    
+    
+    internal static SnapshotManifest FromStorageManifest(Storage.SnapshotManifest storage)
+    {
+        var documentVersions = new Dictionary<DocumentId, DocumentVersionId>();
+        foreach (var doc in storage.Documents)
+        {
+            var docId = new DocumentId(doc.FilePath);
+            var versionId = new DocumentVersionId(doc.ContentHash);
+            documentVersions[docId] = versionId;
+        }
+
+        return new SnapshotManifest
+        {
+            SnapshotId = SnapshotId.Parse(storage.SnapshotId),
+            WorkspaceId = WorkspaceId.Create(storage.GitRoot, storage.SolutionPath),
+            BuiltAtUtc = storage.CreatedAtUtc,
+            DocumentVersions = documentVersions,
+            SdkVersion = storage.SdkVersion,
+            CompilerVersion = storage.CompilerVersion,
+            TargetFrameworks = new Dictionary<string, string>(),
+            ProjectGraph = new Dictionary<string, string[]>(),
+            DatabaseSchemaVersion = 0,
+            OutputSchemaVersion = 0,
+            ExtractorVersion = "",
+            ToolVersion = "",
+            PreviousSnapshotId = null,
+        };
+    }
+
+    
+    
+    
 
     private sealed class SnapshotIdConverter : JsonConverter<SnapshotId>
     {
@@ -196,7 +261,7 @@ public sealed class SnapshotManifest
 
         private static WorkspaceId ParseWorkspaceUri(string uri)
         {
-            // Format: workspace://{gitRoot}/{relativeOrAbsoluteSolutionPath}
+            
             const string prefix = "workspace://";
             if (!uri.StartsWith(prefix, StringComparison.Ordinal))
                 throw new JsonException($"Invalid WorkspaceId URI: {uri}");

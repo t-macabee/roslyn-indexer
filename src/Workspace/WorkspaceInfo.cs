@@ -6,51 +6,51 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace RoslynIndexer;
 
-/// <summary>
-/// Describes the current live workspace state at the time of construction.
-/// Every persisted item can be traced to exactly one version of one workspace
-/// under one compilation configuration through these properties.
-/// </summary>
+
+
+
+
+
 public sealed class WorkspaceInfo
 {
-    /// <summary>Composite identity of the workspace (Git root + solution path).</summary>
+    
     public WorkspaceId Id { get; }
 
-    /// <summary>
-    /// Every source document in the solution, mapped to its SHA-256 content version.
-    /// Keyed by stable logical path (relative to Git root, forward slashes).
-    /// </summary>
+    
+    
+    
+    
     public IReadOnlyDictionary<DocumentId, DocumentVersionId> Documents { get; }
 
-    /// <summary>.NET SDK version string (e.g. "10.0.301") from the registered MSBuild instance.</summary>
+    
     public string SdkVersion { get; }
 
-    /// <summary>Roslyn compiler assembly version (e.g. 4.12.0.0).</summary>
+    
     public Version CompilerVersion { get; }
 
-    /// <summary>
-    /// Target framework moniker per project (e.g. "net10.0").
-    /// Extracted from each project's .csproj file.
-    /// </summary>
+    
+    
+    
+    
     public IReadOnlyDictionary<string, string> TargetFrameworks { get; }
 
-    /// <summary>
-    /// Project dependency graph: project name → set of direct project reference names.
-    /// </summary>
+    
+    
+    
     public IReadOnlyDictionary<string, ImmutableHashSet<string>> ProjectGraph { get; }
 
-    /// <summary>Indexer tool version (from <see cref="VersionConstants.ToolVersion"/>).</summary>
+    
     public string IndexerVersion { get; }
 
-    /// <summary>Extractor version (from <see cref="VersionConstants.ExtractorVersion"/>).</summary>
+    
     public string ExtractorVersion { get; }
 
-    /// <summary>
-    /// Constructs a <see cref="WorkspaceInfo"/> from a loaded Roslyn <see cref="Solution"/>
-    /// and the absolute Git root path.
-    /// </summary>
-    /// <param name="solution">A fully loaded MSBuildWorkspace solution.</param>
-    /// <param name="gitRoot">The absolute path to the Git repository root.</param>
+    
+    
+    
+    
+    
+    
     public WorkspaceInfo(Solution solution, string gitRoot)
     {
         Id = WorkspaceId.Create(gitRoot, solution.FilePath ?? "");
@@ -70,9 +70,9 @@ public sealed class WorkspaceInfo
         ExtractorVersion = VersionConstants.ExtractorVersion;
     }
 
-    // ----------------------------------------------------------------
-    // Private helpers
-    // ----------------------------------------------------------------
+    
+    
+    
 
     private static Dictionary<DocumentId, DocumentVersionId> BuildDocumentMap(
         Solution solution, string gitRoot)
@@ -85,12 +85,12 @@ public sealed class WorkspaceInfo
         {
             foreach (var document in project.Documents)
             {
-                if (document.FilePath == null) continue; // skip generated
+                if (document.FilePath == null) continue; 
 
                 var relPath = GetRelativePath(document.FilePath, normalizedRoot);
                 var docId = new DocumentId(relPath);
 
-                // Read from disk — solution was freshly loaded, so disk matches.
+                
                 var hash = DocumentVersionId.Compute(File.ReadAllBytes(document.FilePath));
 
                 map[docId] = hash;
@@ -145,10 +145,10 @@ public sealed class WorkspaceInfo
                 var root = doc.Root;
                 if (root == null) { map[project.Name] = "unknown"; continue; }
 
-                // SDK-style projects use the default namespace.
+                
                 XNamespace ns = root.GetDefaultNamespace();
 
-                // First <PropertyGroup> usually contains TargetFramework.
+                
                 var tf = root
                     .Elements(ns + "PropertyGroup")
                     .SelectMany(pg => pg.Elements(ns + "TargetFramework"))
