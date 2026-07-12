@@ -16,6 +16,8 @@ using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Rename;
 
+using RoslynIndexer;
+
 namespace RoslynIndexer;
 
 record DirtyManifest(int SchemaVersion, List<string> DirtyFiles, List<string> DeletedFiles, string MarkedAt);
@@ -56,8 +58,7 @@ record SymbolRecord(
 
 public class Program
 {
-    private const int SchemaVersion = 2;
-    private const string IndexerVersion = "1.1.0";
+
 
     private const string ProvenanceCompilerProved = "compiler_proved";
     private const string ProvenanceIndexerObserved = "indexer_observed";
@@ -168,7 +169,7 @@ public class Program
                     break;
 
                 case "status":
-                    ShowStatus();
+                    await ShowStatusAsync();
                     break;
 
                 case "lint":
@@ -370,8 +371,8 @@ public class Program
     {
         var envelope = new
         {
-            indexerVersion = IndexerVersion,
-            schemaVersion = SchemaVersion,
+            indexerVersion = VersionConstants.ToolVersion,
+            schemaVersion = VersionConstants.OutputSchemaVersion,
             command,
             solutionPath = SolutionPath,
             timestampUtc = DateTime.UtcNow.ToString("O"),
@@ -2274,7 +2275,7 @@ private static DiscoveredType ProjectSymbolRecordToDiscoveredType(SymbolRecord s
                 .ToList()
             : new List<string>();
 
-        var existing = new DirtyManifest(SchemaVersion, [], [], "");
+        var existing = new DirtyManifest(VersionConstants.OutputSchemaVersion, [], [], "");
 
         if (File.Exists(DirtyFilePath))
         {
@@ -2283,7 +2284,7 @@ private static DiscoveredType ProjectSymbolRecordToDiscoveredType(SymbolRecord s
         }
 
         var merged = new DirtyManifest(
-            SchemaVersion: SchemaVersion,
+            SchemaVersion: VersionConstants.OutputSchemaVersion,
             DirtyFiles: (existing.DirtyFiles ?? []).Union(dirtyFiles).Distinct().ToList(),
             DeletedFiles: (existing.DeletedFiles ?? []).Union(deletedFiles).Distinct().ToList(),
             MarkedAt: DateTime.UtcNow.ToString("O")
@@ -2474,7 +2475,7 @@ private static DiscoveredType ProjectSymbolRecordToDiscoveredType(SymbolRecord s
         }
 
         var remaining = new DirtyManifest(
-            SchemaVersion: SchemaVersion,
+            SchemaVersion: VersionConstants.OutputSchemaVersion,
             DirtyFiles: (manifest.DirtyFiles ?? []).Except(processed).ToList(),
             DeletedFiles: (manifest.DeletedFiles ?? []).Except(processed).ToList(),
             MarkedAt: DateTime.UtcNow.ToString("O")
@@ -2889,7 +2890,7 @@ private static DiscoveredType ProjectSymbolRecordToDiscoveredType(SymbolRecord s
         var diagnostics = await CollectDiagnosticsAsync(solution);
 
         var baseline = new DiagnosticBaseline(
-            SchemaVersion: SchemaVersion,
+            SchemaVersion: VersionConstants.OutputSchemaVersion,
             CapturedAtUtc: DateTime.UtcNow.ToString("O"),
             SolutionPath: SolutionPath,
             Diagnostics: diagnostics
@@ -2911,8 +2912,8 @@ private static DiscoveredType ProjectSymbolRecordToDiscoveredType(SymbolRecord s
         var baseline = JsonSerializer.Deserialize<DiagnosticBaseline>(text, JsonOptions)
             ?? throw new InvalidOperationException("Failed to deserialize baseline file.");
 
-        if (baseline.SchemaVersion != SchemaVersion)
-            throw new InvalidOperationException($"Schema version mismatch: expected {SchemaVersion}, got {baseline.SchemaVersion}");
+        if (baseline.SchemaVersion != VersionConstants.OutputSchemaVersion)
+            throw new InvalidOperationException($"Schema version mismatch: expected {VersionConstants.OutputSchemaVersion}, got {baseline.SchemaVersion}");
 
         return baseline;
     }
@@ -4134,46 +4135,117 @@ private static DiscoveredType ProjectSymbolRecordToDiscoveredType(SymbolRecord s
         });
     }
 
-    private static void ShowStatus()
+    private static async Task ShowStatusAsync()
     {
+        // ── Build current workspace info ─────────────────────────
+        WorkspaceInfo? workspace = null;
+        string? loadError = null;
+        try
+        {
+            var solution = await LoadSolutionAsync();
+            workspace = new WorkspaceInfo(solution, GitRoot);
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+
+        // ── Try to load stored snapshot ──────────────────────────
+        var snapshotPath = Path.Combine(CodeAuditDir, "snapshot.json");
+        SnapshotManifest? stored = null;
+        string? snapshotLoadError = null;
+        if (File.Exists(snapshotPath))
+        {
+            try
+            {
+                stored = SnapshotManifest.Load(snapshotPath);
+            }
+            catch (Exception ex)
+            {
+                snapshotLoadError = ex.Message;
+            }
+        }
+
+        // ── Run freshness check ──────────────────────────────────
+        WorkspaceFreshness.FreshnessResult? freshness = null;
+        if (workspace != null)
+            freshness = WorkspaceFreshness.CheckFreshness(workspace, stored);
+
+        var statusLabel = freshness == null
+            ? "error"
+            : stored == null
+                ? "never_indexed"
+                : freshness.IsFresh
+                    ? "fresh"
+                    : "stale";
+
+        // ── JSON output ──────────────────────────────────────────
         if (_useJson)
         {
-            object? dirtyManifest = null;
-            if (File.Exists(DirtyFilePath))
-                dirtyManifest = new { exists = true, bytes = new FileInfo(DirtyFilePath).Length };
-            else
-                dirtyManifest = new { exists = false };
-
-            var curatedEntryCount = 0;
-            if (Directory.Exists(SemanticDir))
-                curatedEntryCount = Directory.GetFiles(SemanticDir, "*.semantic.json").Length;
-
-            WriteJsonResult("status", new
+            var mismatchList = freshness?.Mismatches.Select(m => new
             {
+                kind = m.Kind.ToString(),
+                description = m.Description,
+                document = m.Document?.ToString(),
+                detail = m.Detail
+            }).ToList();
+
+            object result = new
+            {
+                status = statusLabel,
                 gitRoot = GitRoot,
                 codeAuditDir = CodeAuditDir,
                 semanticDir = SemanticDir,
                 solutionPath = SolutionPath,
-                dirtyManifest,
-                curatedEntryCount,
+                workspaceId = workspace?.Id.Value,
+                snapshotId = stored?.SnapshotId.ToString(),
+                mismatchCount = freshness?.Mismatches.Count ?? 0,
+                mismatches = mismatchList ?? new List<object>(),
+                loadError,
+                snapshotLoadError,
                 provenance = GetProvenanceIndexerObserved()
-            });
+            };
+
+            WriteJsonResult("status", result);
             return;
         }
 
-        Console.WriteLine("RoslynIndexer is ready.");
+        // ── Text output ──────────────────────────────────────────
         Console.WriteLine($"  Git root: {GitRoot}");
         Console.WriteLine($"  CodeAudit dir: {CodeAuditDir}");
+        Console.WriteLine($"  Semantic dir: {SemanticDir}");
+        Console.WriteLine($"  Solution: {SolutionPath}");
 
-        if (File.Exists(DirtyFilePath))
-            Console.WriteLine($"  Dirty manifest: exists ({new FileInfo(DirtyFilePath).Length} bytes)");
-        else
-            Console.WriteLine("  Dirty manifest: (none)");
-
-        if (Directory.Exists(SemanticDir))
+        if (loadError != null)
         {
-            var semanticFiles = Directory.GetFiles(SemanticDir, "*.semantic.json");
-            Console.WriteLine($"  Curated semantic entries: {semanticFiles.Length}");
+            Console.WriteLine($"  ERROR: Solution load failed — {loadError}");
+            return;
+        }
+
+        if (snapshotLoadError != null)
+        {
+            Console.WriteLine($"  WARNING: Failed to parse existing snapshot.json — {snapshotLoadError}");
+        }
+
+        if (stored == null)
+        {
+            Console.WriteLine("  Status: Never indexed.");
+            return;
+        }
+
+        if (freshness!.IsFresh)
+        {
+            Console.WriteLine("  Status: Fresh.");
+        }
+        else
+        {
+            Console.WriteLine($"  Status: Stale — {freshness.Mismatches.Count} mismatch(es):");
+            foreach (var m in freshness.Mismatches)
+            {
+                var docInfo = m.Document != null ? $" [{m.Document}]" : "";
+                var detailInfo = m.Detail != null ? $" ({m.Detail})" : "";
+                Console.WriteLine($"    - {m.Kind}{docInfo}: {m.Description}{detailInfo}");
+            }
         }
     }
 }
