@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
+using RoslynIndexer.Storage;
 
 internal static class CompilationHelper
 {
@@ -18,5 +19,46 @@ internal static class CompilationHelper
             if (compilation != null)
                 yield return (project, compilation);
         }
+    }
+
+    /// <summary>
+    /// Collects all compiler diagnostics for a given project/compilation pair as DiagnosticRecords.
+    /// </summary>
+    public static List<DiagnosticRecord> GetDiagnostics(
+        string projectName,
+        Compilation compilation)
+    {
+        var results = new List<DiagnosticRecord>();
+
+        var diagnostics = compilation.GetDiagnostics();
+        foreach (var diag in diagnostics)
+        {
+            var loc = diag.Location;
+            int? startLine = null, startColumn = null, endLine = null, endColumn = null;
+            string? documentPath = null;
+
+            if (loc.IsInSource && loc.SourceTree != null)
+            {
+                var span = loc.GetLineSpan();
+                documentPath = loc.SourceTree.FilePath;
+                startLine = span.StartLinePosition.Line;
+                startColumn = span.StartLinePosition.Character;
+                endLine = span.EndLinePosition.Line;
+                endColumn = span.EndLinePosition.Character;
+            }
+
+            results.Add(new DiagnosticRecord(
+                projectName: projectName,
+                documentPath: documentPath,
+                severity: diag.Severity.ToString(),
+                id: diag.Id,
+                message: diag.GetMessage(),
+                startLine: startLine,
+                startColumn: startColumn,
+                endLine: endLine,
+                endColumn: endColumn));
+        }
+
+        return results;
     }
 }

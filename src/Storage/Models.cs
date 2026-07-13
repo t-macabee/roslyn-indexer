@@ -55,6 +55,71 @@ namespace RoslynIndexer.Storage
         }
     }
 
+    public sealed class EdgeRecord
+    {
+        public string SourceSymbolId { get; }
+        public string TargetSymbolId { get; }
+        public string Kind { get; }
+        public string? Provenance { get; }
+
+        public EdgeRecord(string sourceSymbolId, string targetSymbolId, string kind, string? provenance = null)
+        {
+            SourceSymbolId = sourceSymbolId ?? throw new ArgumentNullException(nameof(sourceSymbolId));
+            TargetSymbolId = targetSymbolId ?? throw new ArgumentNullException(nameof(targetSymbolId));
+            Kind = kind ?? throw new ArgumentNullException(nameof(kind));
+            Provenance = provenance;
+        }
+    }
+
+    public sealed class DiagnosticRecord
+    {
+        public string ProjectName { get; }
+        public string? DocumentPath { get; }
+        public string Severity { get; }
+        public string Id { get; }
+        public string Message { get; }
+        public int? StartLine { get; }
+        public int? StartColumn { get; }
+        public int? EndLine { get; }
+        public int? EndColumn { get; }
+
+        public DiagnosticRecord(
+            string projectName,
+            string? documentPath,
+            string severity,
+            string id,
+            string message,
+            int? startLine = null,
+            int? startColumn = null,
+            int? endLine = null,
+            int? endColumn = null)
+        {
+            ProjectName = projectName ?? throw new ArgumentNullException(nameof(projectName));
+            DocumentPath = documentPath;
+            Severity = severity ?? throw new ArgumentNullException(nameof(severity));
+            Id = id ?? throw new ArgumentNullException(nameof(id));
+            Message = message ?? throw new ArgumentNullException(nameof(message));
+            StartLine = startLine;
+            StartColumn = startColumn;
+            EndLine = endLine;
+            EndColumn = endColumn;
+        }
+    }
+
+    public sealed class AnnotationRecord
+    {
+        public string SymbolId { get; }
+        public string Kind { get; }
+        public string Value { get; }
+
+        public AnnotationRecord(string symbolId, string kind, string value)
+        {
+            SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
+            Kind = kind ?? throw new ArgumentNullException(nameof(kind));
+            Value = value ?? throw new ArgumentNullException(nameof(value));
+        }
+    }
+
     public class DocumentVersion
     {
         public string DocumentId { get; }

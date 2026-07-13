@@ -3,6 +3,21 @@ using System.Text.Json;
 
 namespace RoslynIndexer.Storage
 {
+    public enum EdgeKind
+    {
+        /// <summary>Type inherits from a base type.</summary>
+        Inherits,
+        /// <summary>Type implements an interface.</summary>
+        Implements,
+        /// <summary>Symbol references another type (e.g., return type, parameter type).</summary>
+        References,
+        /// <summary>Type contains a nested type.</summary>
+        Contains,
+    }
+}
+
+namespace RoslynIndexer.Storage
+{
     public enum SymbolKind
     {
         Namespace,

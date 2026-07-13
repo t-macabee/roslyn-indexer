@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RoslynIndexer.Storage;
+using EdgeKind = RoslynIndexer.Storage.EdgeKind;
 using SymKind = RoslynIndexer.Storage.SymbolKind;
 
 namespace RoslynIndexer;
@@ -36,6 +37,96 @@ public sealed class SymbolExtractor
         }
 
         return results;
+    }
+
+    public List<EdgeRecord> ExtractEdges()
+    {
+        var edges = new List<EdgeRecord>();
+
+        foreach (var typeSymbol in GetNamespaceTypeMembers(_compilation.Assembly.GlobalNamespace))
+        {
+            CollectTypeEdges(typeSymbol, edges);
+        }
+
+        return edges;
+    }
+
+    private void CollectTypeEdges(INamedTypeSymbol typeSymbol, List<EdgeRecord> edges)
+    {
+        var sourceId = MakeSymbolId(typeSymbol);
+        if (sourceId == null)
+            return;
+
+        // Base type inheritance
+        if (typeSymbol.BaseType != null &&
+            typeSymbol.BaseType.SpecialType != SpecialType.System_Object &&
+            typeSymbol.BaseType.SpecialType != SpecialType.System_ValueType)
+        {
+            var targetId = MakeSymbolId(typeSymbol.BaseType);
+            if (targetId != null)
+            {
+                edges.Add(new EdgeRecord(sourceId, targetId, EdgeKind.Inherits.ToString(), "roslyn"));
+            }
+        }
+
+        // Interface implementations
+        foreach (var iface in typeSymbol.Interfaces)
+        {
+            var targetId = MakeSymbolId(iface);
+            if (targetId != null)
+            {
+                edges.Add(new EdgeRecord(sourceId, targetId, EdgeKind.Implements.ToString(), "roslyn"));
+            }
+        }
+
+        // Nested types
+        foreach (var nested in typeSymbol.GetTypeMembers())
+        {
+            CollectTypeEdges(nested, edges);
+            var nestedId = MakeSymbolId(nested);
+            if (nestedId != null)
+            {
+                edges.Add(new EdgeRecord(sourceId, nestedId, EdgeKind.Contains.ToString(), "roslyn"));
+            }
+        }
+
+        // Member-level type references
+        foreach (var member in typeSymbol.GetMembers())
+        {
+            if (member is INamedTypeSymbol)
+                continue; // handled above via nested types
+
+            CollectMemberReferenceEdges(member, sourceId, edges);
+        }
+    }
+
+    private void CollectMemberReferenceEdges(ISymbol member, string sourceSymbolId, List<EdgeRecord> edges)
+    {
+        ITypeSymbol? referencedType = member switch
+        {
+            IMethodSymbol method => method.ReturnType,
+            IPropertySymbol prop => prop.Type,
+            IFieldSymbol field => field.Type,
+            IEventSymbol evt => evt.Type,
+            _ => null
+        };
+
+        if (referencedType is INamedTypeSymbol namedType)
+        {
+            var targetId = MakeSymbolId(namedType);
+            if (targetId != null && targetId != sourceSymbolId)
+            {
+                edges.Add(new EdgeRecord(sourceSymbolId, targetId, EdgeKind.References.ToString(), "roslyn"));
+            }
+        }
+    }
+
+    private string? MakeSymbolId(ITypeSymbol typeSymbol)
+    {
+        var docCommentId = typeSymbol.GetDocumentationCommentId();
+        if (string.IsNullOrEmpty(docCommentId))
+            return null;
+        return $"{docCommentId}|{_assemblyIdentity}";
     }
 
     private void ExtractTypeDeclarations(INamedTypeSymbol typeSymbol, List<SymbolDeclaration> results)

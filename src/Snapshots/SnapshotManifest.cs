@@ -115,15 +115,24 @@ public sealed class SnapshotManifest
     
     
     
-    public void Save(string path, IIndexStore? store = null,
-        IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
+    /// <summary>
+    /// Saves this snapshot to the database (primary path).
+    /// Optionally writes a JSON export if <paramref name="jsonExportPath"/> is provided.
+    /// </summary>
+    public void Save(IIndexStore store,
+        IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
+        string? jsonExportPath = null)
     {
-        var json = JsonSerializer.Serialize(this, JsonOptions);
-        File.WriteAllText(path, json);
+        if (store == null)
+            throw new ArgumentNullException(nameof(store));
 
-        if (store != null)
+        store.SaveSnapshot(ToStorageManifest(contents));
+        store.BuildSearchIndex(SnapshotId.ToString());
+
+        if (jsonExportPath != null)
         {
-            store.SaveSnapshot(ToStorageManifest(contents));
+            var json = JsonSerializer.Serialize(this, JsonOptions);
+            File.WriteAllText(jsonExportPath, json);
         }
     }
 

@@ -89,6 +89,9 @@ namespace RoslynIndexer.Storage
             {
                 new Migration_001_InitialSchema(),
                 new Migration_002_AddLineStarts(),
+                new Migration_003_SymbolTables(),
+                new Migration_004_FtsSearch(),
+                new Migration_005_A5OperationalTables(),
             };
     }
 }
