@@ -148,18 +148,19 @@ namespace RoslynIndexer.Storage
 
                     command.CommandText = @"
                         INSERT INTO document_versions (
-                            document_version_id, document_id, content_hash, content, encoding, byte_count
+                            document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts
                         ) VALUES (
-                            @documentVersionId, @documentId, @contentHash, @content, @encoding, @byteCount
+                            @documentVersionId, @documentId, @contentHash, @content, @encoding, @byteCount, @lineStarts
                         );
                     ";
                     command.Parameters.Clear();
                     command.Parameters.AddWithValue("@documentVersionId", doc.DocumentId);
                     command.Parameters.AddWithValue("@documentId", doc.DocumentId);
                     command.Parameters.AddWithValue("@contentHash", doc.ContentHash);
-                    command.Parameters.AddWithValue("@content", (object)DBNull.Value);
-                    command.Parameters.AddWithValue("@encoding", doc.Encoding);
-                    command.Parameters.AddWithValue("@byteCount", (object)DBNull.Value);
+                    command.Parameters.AddWithValue("@content", (object?)(doc.Content) ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("@encoding", string.IsNullOrEmpty(doc.Encoding) ? (object)DBNull.Value : (object)doc.Encoding);
+                    command.Parameters.AddWithValue("@byteCount", doc.ByteCount > 0 ? (object)doc.ByteCount : (object)DBNull.Value);
+                    command.Parameters.AddWithValue("@lineStarts", string.IsNullOrEmpty(doc.LineStarts) ? (object)DBNull.Value : (object)doc.LineStarts);
                     command.ExecuteNonQuery();
 
                     command.CommandText = @"
@@ -217,7 +218,8 @@ namespace RoslynIndexer.Storage
             var documents = new List<DocumentVersion>();
             using var docCommand = connection.CreateCommand();
             docCommand.CommandText = @"
-                SELECT d.document_id, d.relative_path, dv.content_hash, dv.encoding
+                SELECT d.document_id, d.relative_path, dv.content_hash, dv.encoding,
+                       dv.line_starts
                 FROM snapshot_documents sd
                 JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
                 JOIN documents d ON d.document_id = dv.document_id
@@ -228,12 +230,13 @@ namespace RoslynIndexer.Storage
             using var docReader = docCommand.ExecuteReader();
             while (docReader.Read())
             {
+                var lineStarts = docReader.IsDBNull(4) ? "" : docReader.GetString(4);
                 documents.Add(new DocumentVersion(
                     documentId: docReader.GetString(0),
                     filePath: docReader.GetString(1),
                     contentHash: docReader.GetString(2),
                     encoding: docReader.IsDBNull(3) ? "" : docReader.GetString(3),
-                    lineStart: "",
+                    lineStart: lineStarts,
                     createdAtUtc: DateTime.MinValue
                 ));
             }
@@ -248,6 +251,32 @@ namespace RoslynIndexer.Storage
                 createdAtUtc: builtAtUtc,
                 documents: documents
             );
+        }
+
+        public string? GetSource(string relativePath, string snapshotId)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT dv.content
+                FROM snapshot_documents sd
+                JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+                JOIN documents d ON d.document_id = dv.document_id
+                WHERE d.relative_path = @relativePath
+                  AND sd.snapshot_id = @snapshotId;
+            ";
+            command.Parameters.AddWithValue("@relativePath", relativePath);
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+            var result = command.ExecuteScalar();
+            if (result == null || result == DBNull.Value)
+                return null;
+
+            var bytes = (byte[])result;
+            return System.Text.Encoding.UTF8.GetString(bytes);
         }
     }
 }

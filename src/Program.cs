@@ -15,6 +15,12 @@ namespace RoslynIndexer
 
         public static void Main(string[] args)
         {
+            if (args.Contains("--mode=get-source"))
+            {
+                RunGetSource(args);
+                return;
+            }
+
             var solutionPathArg = args.FirstOrDefault(a => a.StartsWith("--solution="))?.Split('=', 2)[1]
                 ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
@@ -37,7 +43,7 @@ namespace RoslynIndexer
             _indexStore = new SqliteIndexStore(dbPath);
             _indexStore.Open(dbPath);
             _indexStore.RunMigrations();
-            _indexStore.ValidateSchema(expectedVersion: 1);
+            _indexStore.ValidateSchema(expectedVersion: VersionConstants.DatabaseSchemaVersion);
 
             try
             {
@@ -49,6 +55,73 @@ namespace RoslynIndexer
                 {
                     ShowStatus();
                 }
+            }
+            finally
+            {
+                _indexStore.Close();
+            }
+        }
+
+        private static void RunGetSource(string[] args)
+        {
+            var documentArg = args.FirstOrDefault(a => a.StartsWith("--document="))?.Split('=', 2)[1];
+            if (string.IsNullOrEmpty(documentArg))
+            {
+                Console.Error.WriteLine("ERROR: --document=<relative-path> is required for --mode=get-source.");
+                Environment.Exit(1);
+            }
+
+            var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
+
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
+                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            if (string.IsNullOrEmpty(outputDirArg))
+            {
+                Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
+                Environment.Exit(1);
+            }
+
+            var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+            if (!File.Exists(dbPath))
+            {
+                Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
+                Environment.Exit(1);
+            }
+
+            _indexStore = new SqliteIndexStore(dbPath);
+            _indexStore.Open(dbPath);
+
+            try
+            {
+                
+                string? source;
+                if (!string.IsNullOrEmpty(snapshotArg))
+                {
+                    source = _indexStore.GetSource(documentArg, snapshotArg);
+                }
+                else
+                {
+                    
+                    using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                    connection.Open();
+                    using var cmd = connection.CreateCommand();
+                    cmd.CommandText = "SELECT snapshot_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
+                    var latestSnapshot = cmd.ExecuteScalar() as string;
+                    if (latestSnapshot == null)
+                    {
+                        Console.Error.WriteLine("ERROR: No snapshots found in the database.");
+                        Environment.Exit(1);
+                    }
+                    source = _indexStore.GetSource(documentArg, latestSnapshot);
+                }
+
+                if (source == null)
+                {
+                    Console.Error.WriteLine($"ERROR: Document '{documentArg}' not found in snapshot.");
+                    Environment.Exit(1);
+                }
+
+                Console.Write(source);
             }
             finally
             {

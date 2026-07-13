@@ -115,14 +115,15 @@ public sealed class SnapshotManifest
     
     
     
-    public void Save(string path, IIndexStore? store = null)
+    public void Save(string path, IIndexStore? store = null,
+        IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
     {
         var json = JsonSerializer.Serialize(this, JsonOptions);
         File.WriteAllText(path, json);
 
         if (store != null)
         {
-            store.SaveSnapshot(ToStorageManifest());
+            store.SaveSnapshot(ToStorageManifest(contents));
         }
     }
 
@@ -135,16 +136,35 @@ public sealed class SnapshotManifest
     }
 
     
-    internal Storage.SnapshotManifest ToStorageManifest()
+    internal Storage.SnapshotManifest ToStorageManifest(
+        IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
     {
-        var documents = DocumentVersions.Select(kvp => new DocumentVersion(
-            documentId: kvp.Key.ToString(),
-            filePath: kvp.Key.ToString(),
-            contentHash: kvp.Value.ToString(),
-            encoding: "",
-            lineStart: "",
-            createdAtUtc: DateTime.MinValue
-        )).ToList();
+        var documents = DocumentVersions.Select(kvp =>
+        {
+            var docId = kvp.Key;
+            var docPath = docId.ToString();
+            byte[]? content = null;
+            string encoding = "";
+            string lineStarts = "";
+
+            if (contents != null && contents.TryGetValue(docId, out var entry))
+            {
+                content = entry.Content;
+                encoding = entry.Encoding;
+                lineStarts = entry.LineStarts;
+            }
+
+            return new DocumentVersion(
+                documentId: docPath,
+                filePath: docPath,
+                contentHash: kvp.Value.ToString(),
+                encoding: encoding,
+                lineStart: lineStarts,
+                createdAtUtc: DateTime.MinValue,
+                content: content ?? Array.Empty<byte>(),
+                lineStarts: lineStarts
+            );
+        }).ToList();
 
         return new Storage.SnapshotManifest(
             snapshotId: SnapshotId.ToString(),

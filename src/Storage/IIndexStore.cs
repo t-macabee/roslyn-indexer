@@ -13,5 +13,6 @@ namespace RoslynIndexer.Storage
         void SaveWorkspace(WorkspaceId id, string gitRoot, string solutionPath, DateTime createdAtUtc);
         void SaveSnapshot(SnapshotManifest manifest);
         SnapshotManifest? LoadLatestSnapshot(WorkspaceId workspaceId);
+        string? GetSource(string relativePath, string snapshotId);
     }
 }

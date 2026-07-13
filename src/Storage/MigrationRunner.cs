@@ -85,6 +85,10 @@ namespace RoslynIndexer.Storage
         }
 
         private static List<IMigration> GetMigrations() =>
-            new List<IMigration> { new Migration_001_InitialSchema() };
+            new List<IMigration>
+            {
+                new Migration_001_InitialSchema(),
+                new Migration_002_AddLineStarts(),
+            };
     }
 }

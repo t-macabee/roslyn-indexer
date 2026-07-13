@@ -64,6 +64,10 @@ namespace RoslynIndexer.Storage
         public string LineStart { get; }
         public DateTime CreatedAtUtc { get; }
 
+        public byte[]? Content { get; }
+        public int ByteCount => Content?.Length ?? 0;
+        public string? LineStarts { get; }
+
         public DocumentVersion(
             string documentId,
             string filePath,
@@ -78,6 +82,21 @@ namespace RoslynIndexer.Storage
             Encoding = encoding;
             LineStart = lineStart;
             CreatedAtUtc = createdAtUtc;
+        }
+
+        public DocumentVersion(
+            string documentId,
+            string filePath,
+            string contentHash,
+            string encoding,
+            string lineStart,
+            DateTime createdAtUtc,
+            byte[] content,
+            string lineStarts)
+            : this(documentId, filePath, contentHash, encoding, lineStart, createdAtUtc)
+        {
+            Content = content;
+            LineStarts = lineStarts;
         }
     }
 }
