@@ -3,11 +3,11 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using RoslynIndexer.Storage;
-using EdgeKind = RoslynIndexer.Storage.EdgeKind;
-using SymKind = RoslynIndexer.Storage.SymbolKind;
+using Lurp.Storage;
+using EdgeKind = Lurp.Storage.EdgeKind;
+using SymKind = Lurp.Storage.SymbolKind;
 
-namespace RoslynIndexer;
+namespace Lurp;
 
 public sealed class SymbolExtractor
 {
@@ -491,3 +491,4 @@ public sealed class SymbolExtractor
         }
     }
 }
+

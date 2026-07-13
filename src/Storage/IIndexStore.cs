@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace RoslynIndexer.Storage
+namespace Lurp.Storage
 {
     public sealed class SourceSearchResult
     {
@@ -102,3 +102,4 @@ namespace RoslynIndexer.Storage
         List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null);
     }
 }
+

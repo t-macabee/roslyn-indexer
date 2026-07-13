@@ -6,7 +6,7 @@ using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
-namespace RoslynIndexer;
+namespace Lurp;
 
 public sealed class WorkspaceInfo
 {
@@ -198,3 +198,4 @@ public sealed class WorkspaceInfo
         return graph;
     }
 }
+

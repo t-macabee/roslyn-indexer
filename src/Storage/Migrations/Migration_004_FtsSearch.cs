@@ -1,6 +1,6 @@
 using Microsoft.Data.Sqlite;
 
-namespace RoslynIndexer.Storage.Migrations
+namespace Lurp.Storage.Migrations
 {
     public class Migration_004_FtsSearch : IMigration
     {
@@ -38,3 +38,4 @@ namespace RoslynIndexer.Storage.Migrations
         }
     }
 }
+

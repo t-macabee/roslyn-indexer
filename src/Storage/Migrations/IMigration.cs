@@ -1,6 +1,6 @@
 using Microsoft.Data.Sqlite;
 
-namespace RoslynIndexer.Storage.Migrations
+namespace Lurp.Storage.Migrations
 {
     public interface IMigration
     {
@@ -8,3 +8,4 @@ namespace RoslynIndexer.Storage.Migrations
         void Up(SqliteConnection connection);
     }
 }
+

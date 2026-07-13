@@ -1,7 +1,7 @@
 using System;
 using System.Text.Json;
 
-namespace RoslynIndexer.Storage
+namespace Lurp.Storage
 {
     public enum EdgeKind
     {
@@ -16,7 +16,7 @@ namespace RoslynIndexer.Storage
     }
 }
 
-namespace RoslynIndexer.Storage
+namespace Lurp.Storage
 {
     public enum SymbolKind
     {
@@ -152,3 +152,4 @@ namespace RoslynIndexer.Storage
         }
     }
 }
+

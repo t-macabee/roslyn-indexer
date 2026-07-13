@@ -8,9 +8,9 @@ using System.Threading.Tasks;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
-using RoslynIndexer.Storage;
+using Lurp.Storage;
 
-namespace RoslynIndexer
+namespace Lurp
 {
     public class Program
     {

@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
-using RoslynIndexer.Storage;
+using Lurp.Storage;
 
 internal static class CompilationHelper
 {
@@ -62,3 +62,4 @@ internal static class CompilationHelper
         return results;
     }
 }
+

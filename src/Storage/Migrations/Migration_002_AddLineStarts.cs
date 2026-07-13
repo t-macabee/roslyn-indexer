@@ -1,6 +1,6 @@
 using Microsoft.Data.Sqlite;
 
-namespace RoslynIndexer.Storage.Migrations
+namespace Lurp.Storage.Migrations
 {
     public class Migration_002_AddLineStarts : IMigration
     {
@@ -14,3 +14,4 @@ namespace RoslynIndexer.Storage.Migrations
         }
     }
 }
+

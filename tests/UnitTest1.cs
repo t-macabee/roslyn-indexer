@@ -4,9 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Microsoft.Data.Sqlite;
-using RoslynIndexer.Storage;
+using Lurp.Storage;
 
-namespace RoslynIndexer.Storage.Tests;
+namespace Lurp.Storage.Tests;
 
 public class MigrationRunnerTests : IDisposable
 {
@@ -1037,3 +1037,4 @@ public class MigrationRunnerTests : IDisposable
         }
     }
 }
+

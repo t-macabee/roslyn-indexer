@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using RoslynIndexer.Storage;
+using Lurp.Storage;
 
-namespace RoslynIndexer;
+namespace Lurp;
 
 
 
@@ -342,3 +342,4 @@ public sealed class SnapshotManifest
         }
     }
 }
+

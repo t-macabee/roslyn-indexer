@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace RoslynIndexer.Storage
+namespace Lurp.Storage
 {
     public class WorkspaceId
     {

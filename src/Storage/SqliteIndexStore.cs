@@ -6,7 +6,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
-namespace RoslynIndexer.Storage
+namespace Lurp.Storage
 {
     public class SqliteIndexStore : IIndexStore
     {
@@ -1044,3 +1044,4 @@ namespace RoslynIndexer.Storage
         }
     }
 }
+

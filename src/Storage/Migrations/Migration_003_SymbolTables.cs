@@ -1,6 +1,6 @@
 using Microsoft.Data.Sqlite;
 
-namespace RoslynIndexer.Storage.Migrations
+namespace Lurp.Storage.Migrations
 {
     public class Migration_003_SymbolTables : IMigration
     {
@@ -78,3 +78,4 @@ namespace RoslynIndexer.Storage.Migrations
         }
     }
 }
+

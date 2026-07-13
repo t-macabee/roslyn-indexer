@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
-using RoslynIndexer.Storage;
+using Lurp.Storage;
 
-namespace RoslynIndexer;
+namespace Lurp;
 
 
 
@@ -257,3 +257,4 @@ public static class WorkspaceFreshness
             StoredWorkspaceId: stored.WorkspaceId);
     }
 }
+

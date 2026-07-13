@@ -4,7 +4,7 @@ using System.IO.Hashing;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace RoslynIndexer;
+namespace Lurp;
 
 
 
@@ -153,3 +153,4 @@ public readonly record struct DocumentVersionId
     private static string Hex(byte[] bytes)
         => Convert.ToHexStringLower(bytes);
 }
+

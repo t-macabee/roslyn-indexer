@@ -1,4 +1,4 @@
-namespace RoslynIndexer;
+namespace Lurp;
 
 
 
@@ -56,3 +56,4 @@ public sealed record SnapshotMismatch(
     string Description,
     DocumentId? Document,
     string? Detail);
+

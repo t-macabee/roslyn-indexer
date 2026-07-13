@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Data.Sqlite;
-using RoslynIndexer.Storage.Migrations;
+using Lurp.Storage.Migrations;
 
-namespace RoslynIndexer.Storage
+namespace Lurp.Storage
 {
     public class MigrationRunner
     {
@@ -95,3 +95,4 @@ namespace RoslynIndexer.Storage
             };
     }
 }
+
