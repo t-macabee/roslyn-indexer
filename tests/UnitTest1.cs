@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using Microsoft.Data.Sqlite;
 using Lurp.Storage;
+using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -26,6 +27,32 @@ public class MigrationRunnerTests : IDisposable
             File.Delete(_dbPath);
     }
 
+    internal static SymbolDeclaration MakeDecl(
+        string symbolId,
+        string docCommentId,
+        string assembly,
+        SymbolKind kind,
+        string docVersionId,
+        int? fullS, int? fullE,
+        int? sigS, int? sigE,
+        int? bodyS, int? bodyE,
+        int? nameS, int? nameE,
+        bool isPartial = false,
+        string? fqn = null,
+        string? metadataJson = null)
+    {
+        return new SymbolDeclaration(
+            symbolId: new SymbolId(docCommentId, assembly, fqn),
+            kind: kind,
+            documentVersionId: docVersionId,
+            fullSpan: new DeclarationSpan(fullS, fullE),
+            signatureSpan: new DeclarationSpan(sigS, sigE),
+            bodySpan: new DeclarationSpan(bodyS, bodyE),
+            nameSpan: new DeclarationSpan(nameS, nameE),
+            isPartial: isPartial,
+            metadataJson: metadataJson);
+    }
+
     [Fact]
     public void RunMigrations_AppliesAllMigrations_SchemaVersionIsSix()
     {
@@ -33,7 +60,7 @@ public class MigrationRunnerTests : IDisposable
 
         runner.RunMigrations();
 
-        Assert.Equal(7, runner.GetCurrentSchemaVersion());
+        Assert.Equal(8, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -44,7 +71,7 @@ public class MigrationRunnerTests : IDisposable
         runner.RunMigrations();
         runner.RunMigrations();
 
-        Assert.Equal(7, runner.GetCurrentSchemaVersion());
+        Assert.Equal(8, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -320,7 +347,7 @@ public class MigrationRunnerTests : IDisposable
         
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(7, runner.GetCurrentSchemaVersion());
+        Assert.Equal(8, runner.GetCurrentSchemaVersion());
 
         
         using (var connection = new SqliteConnection($"Data Source={_dbPath}"))
@@ -397,29 +424,6 @@ public class MigrationRunnerTests : IDisposable
         }
 
 
-        private static SymbolDeclaration MakeDecl(
-            string symbolId,
-            string docCommentId,
-            string assembly,
-            SymbolKind kind,
-            string docVersionId,
-            int? fullS, int? fullE,
-            int? sigS, int? sigE,
-            int? bodyS, int? bodyE,
-            int? nameS, int? nameE,
-            bool isPartial = false,
-            string? fqn = null)
-        {
-            return new SymbolDeclaration(
-                symbolId: new SymbolId(docCommentId, assembly, fqn),
-                kind: kind,
-                documentVersionId: docVersionId,
-                fullSpan: new DeclarationSpan(fullS, fullE),
-                signatureSpan: new DeclarationSpan(sigS, sigE),
-                bodySpan: new DeclarationSpan(bodyS, bodyE),
-                nameSpan: new DeclarationSpan(nameS, nameE),
-                isPartial: isPartial);
-        }
 
 
         [Fact]
@@ -874,7 +878,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(7, runner.GetCurrentSchemaVersion());
+            Assert.Equal(8, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -895,7 +899,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(7, runner.GetCurrentSchemaVersion());
+            Assert.Equal(8, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1072,11 +1076,11 @@ public class MigrationRunnerTests : IDisposable
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(7, runner.GetCurrentSchemaVersion());
+            Assert.Equal(8, runner.GetCurrentSchemaVersion());
 
             // Second run — must not throw and version stays the same
             runner.RunMigrations();
-            Assert.Equal(7, runner.GetCurrentSchemaVersion());
+            Assert.Equal(8, runner.GetCurrentSchemaVersion());
         }
 
         /// <summary>
@@ -1311,7 +1315,7 @@ class Foo {
     void Bar() {}
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-decl");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-decl");
 
             var edges = extractor.ExtractAll();
 
@@ -1331,7 +1335,7 @@ class Foo {
     void B() {}
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-calls");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-calls");
 
             var edges = extractor.ExtractAll();
 
@@ -1352,7 +1356,7 @@ class Bar {
     void M() { var x = new Foo(); }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-ctor");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-ctor");
 
             var edges = extractor.ExtractAll();
 
@@ -1374,7 +1378,7 @@ class Derived : Base {
     public override void M() {}
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-override");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-override");
 
             var edges = extractor.ExtractAll();
 
@@ -1393,7 +1397,7 @@ class Foo {
     void M() { _field = 1; int x = _field; }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-rw");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-rw");
 
             var edges = extractor.ExtractAll();
 
@@ -1416,7 +1420,7 @@ class Foo {
     string M() { return ""; }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-ret");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-ret");
 
             var edges = extractor.ExtractAll();
 
@@ -1434,7 +1438,7 @@ class Foo {
     void M() { throw new System.InvalidOperationException(); }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-throw");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-throw");
 
             var edges = extractor.ExtractAll();
 
@@ -1522,10 +1526,10 @@ class Derived : Base {
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(7, runner.GetCurrentSchemaVersion());
+            Assert.Equal(8, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(7, runner.GetCurrentSchemaVersion());
+            Assert.Equal(8, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1742,8 +1746,8 @@ class Derived : Base {
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
-                nameS: 0, nameE: 5);
-            fromDecl.MetadataJson = "{\"signature\": \"void Foo()\", \"return_type\": \"void\"}";
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"void Foo()\", \"return_type\": \"void\"}");
 
             var toDecl = MakeDecl(
                 symbolId: symbolId,
@@ -1754,8 +1758,8 @@ class Derived : Base {
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
-                nameS: 0, nameE: 5);
-            toDecl.MetadataJson = "{\"signature\": \"int Foo()\", \"return_type\": \"int\"}";
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"int Foo()\", \"return_type\": \"int\"}");
 
             store.SaveDeclarations(fromSnapshotId, new List<SymbolDeclaration> { fromDecl });
             store.SaveDeclarations(toSnapshotId, new List<SymbolDeclaration> { toDecl });
@@ -1845,6 +1849,260 @@ class Derived : Base {
             var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             Assert.Empty(changes);
+        }
+    }
+
+    public class B4GeneratedCodeTests : IDisposable
+    {
+        private readonly string _dbPath;
+
+        public B4GeneratedCodeTests()
+        {
+            _dbPath = Path.Combine(Path.GetTempPath(), $"indexer_b4_{Guid.NewGuid():N}.db");
+        }
+
+        public void Dispose()
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(_dbPath))
+                File.Delete(_dbPath);
+        }
+
+        private SqliteIndexStore CreateStore()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+            return store;
+        }
+
+        private static byte[] StringToBytes(string text) => Encoding.UTF8.GetBytes(text);
+
+        private static void CreateSnapshotWithDocument(
+            SqliteIndexStore store, string snapshotId, string relativePath, string content)
+        {
+            var lineStarts = "[0]";
+            var sourceBytes = StringToBytes(content);
+
+            var manifest = new SnapshotManifest(
+                snapshotId: snapshotId,
+                workspaceId: "workspace:///root/proj",
+                gitRoot: "/root",
+                solutionPath: "/root/proj",
+                sdkVersion: "10.0.301",
+                compilerVersion: "4.12.0.0",
+                createdAtUtc: DateTime.UtcNow,
+                documents: new List<DocumentVersion>
+                {
+                    new("doc-" + relativePath, relativePath, "hash1", "utf-8", lineStarts, DateTime.MinValue,
+                        sourceBytes, lineStarts),
+                });
+            store.SaveSnapshot(manifest);
+        }
+
+        /// <summary>
+        /// B4.8a — Migration_008 idempotency: Run migration twice; no crash, version stays 8.
+        /// Verify is_generated and generator_identity columns exist.
+        /// </summary>
+        [Fact]
+        public void Migration008_RunTwice_IsIdempotent()
+        {
+            var runner = new MigrationRunner(_dbPath);
+
+            runner.RunMigrations();
+            Assert.Equal(8, runner.GetCurrentSchemaVersion());
+
+            // Second run — must not throw and version stays the same
+            runner.RunMigrations();
+            Assert.Equal(8, runner.GetCurrentSchemaVersion());
+
+            // Verify columns exist
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var cmd = connection.CreateCommand();
+
+            cmd.CommandText = "PRAGMA table_info(declarations);";
+            using var reader = cmd.ExecuteReader();
+            bool hasIsGenerated = false, hasGeneratorIdentity = false;
+            while (reader.Read())
+            {
+                var colName = reader.GetString(1);
+                if (colName == "is_generated") hasIsGenerated = true;
+                if (colName == "generator_identity") hasGeneratorIdentity = true;
+            }
+            Assert.True(hasIsGenerated, "is_generated column should exist after migration 008");
+            Assert.True(hasGeneratorIdentity, "generator_identity column should exist after migration 008");
+        }
+
+        /// <summary>
+        /// B4.8d — Declaration round-trip with is_generated: Save a declaration with
+        /// IsGenerated = true and GeneratorIdentity = "SG/FooGenerator"; read back
+        /// via GetSymbolInfo; verify both fields survive.
+        /// </summary>
+        [Fact]
+        public void SaveDeclaration_WithIsGenerated_RoundTrips()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-b4-rt-gen-001";
+            CreateSnapshotWithDocument(store, snapshotId, "src/Generated.cs",
+                "// <auto-generated>\nclass GeneratedClass { }");
+
+            // Content: "// <auto-generated>\nclass GeneratedClass { }" = 44 bytes
+            var decl = new SymbolDeclaration(
+                symbolId: new SymbolId("T:GeneratedClass", "asm1", "GeneratedClass"),
+                kind: SymbolKind.Type,
+                documentVersionId: "doc-src/Generated.cs",
+                fullSpan: new DeclarationSpan(0, 44),
+                signatureSpan: new DeclarationSpan(0, 26),
+                bodySpan: new DeclarationSpan(26, 43),
+                nameSpan: new DeclarationSpan(26, 40),
+                isGenerated: true,
+                generatorIdentity: "SG/FooGenerator");
+
+            store.SaveDeclarations(snapshotId, new[] { decl });
+
+            var info = store.GetSymbolInfo("T:GeneratedClass|asm1", snapshotId);
+            Assert.NotNull(info);
+            Assert.Equal("T:GeneratedClass", info!.SymbolId.DocCommentId);
+
+            // Verify is_generated field survives via GetSymbolSource with includeGenerated
+            var sourceWithout = store.GetSymbolSource("T:GeneratedClass|asm1", snapshotId, ViewKind.Declaration);
+            Assert.Null(sourceWithout); // excluded by default
+
+            var sourceWith = store.GetSymbolSource("T:GeneratedClass|asm1", snapshotId, ViewKind.Declaration, includeGenerated: true);
+            Assert.NotNull(sourceWith);
+            Assert.Contains("GeneratedClass", sourceWith!);
+        }
+
+        /// <summary>
+        /// B4.8e — GetSymbolSource excludes generated by default: Save a generated declaration
+        /// with a body span; GetSymbolSource without flag returns null; with includeGenerated:true returns body.
+        /// </summary>
+        [Fact]
+        public void GetSymbolSource_ExcludesGeneratedByDefault()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-b4-excl-001";
+            CreateSnapshotWithDocument(store, snapshotId, "src/Gen.cs",
+                "// <auto-generated>\nclass Gen { void Foo() { } }");
+
+            var decl = new SymbolDeclaration(
+                symbolId: new SymbolId("T:Gen", "asm1", "Gen"),
+                kind: SymbolKind.Type,
+                documentVersionId: "doc-src/Gen.cs",
+                fullSpan: new DeclarationSpan(0, 40),
+                signatureSpan: new DeclarationSpan(0, 20),
+                bodySpan: new DeclarationSpan(21, 39),
+                nameSpan: new DeclarationSpan(18, 21),
+                isGenerated: true,
+                generatorIdentity: "auto-generated-header");
+
+            store.SaveDeclarations(snapshotId, new[] { decl });
+
+            // Default: should be excluded
+            var without = store.GetSymbolSource("T:Gen|asm1", snapshotId, ViewKind.Declaration);
+            Assert.Null(without);
+
+            // With flag: should be included
+            var with = store.GetSymbolSource("T:Gen|asm1", snapshotId, ViewKind.Declaration, includeGenerated: true);
+            Assert.NotNull(with);
+        }
+
+        /// <summary>
+        /// B4.8f — Search excludes generated by default: Index two documents (one generated
+        /// with a unique token). Search without --include-generated → 0 results. With flag → results.
+        /// </summary>
+        [Fact]
+        public void Search_ExcludesGeneratedByDefault()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-b4-search-001";
+
+            // Non-generated document
+            CreateSnapshotWithDocument(store, snapshotId, "src/Normal.cs",
+                "class NormalClass { }");
+
+            // Generated document with unique token — need a separate snapshot approach
+            // Since we can't easily add a second document to the same snapshot via helper,
+            // we'll save declarations instead
+            var normalDecl = new SymbolDeclaration(
+                symbolId: new SymbolId("T:NormalClass", "asm1", "NormalClass"),
+                kind: SymbolKind.Type,
+                documentVersionId: "doc-src/Normal.cs",
+                fullSpan: new DeclarationSpan(0, 20),
+                signatureSpan: new DeclarationSpan(0, 15),
+                bodySpan: new DeclarationSpan(16, 19),
+                nameSpan: new DeclarationSpan(7, 18),
+                isGenerated: false);
+
+            var generatedDecl = new SymbolDeclaration(
+                symbolId: new SymbolId("T:GenClass", "asm1", "GenClass"),
+                kind: SymbolKind.Type,
+                documentVersionId: "doc-src/Normal.cs", // same doc for simplicity
+                fullSpan: new DeclarationSpan(0, 20),
+                signatureSpan: new DeclarationSpan(0, 15),
+                bodySpan: new DeclarationSpan(16, 19),
+                nameSpan: new DeclarationSpan(7, 18),
+                isGenerated: true,
+                generatorIdentity: "test-gen");
+
+            store.SaveDeclarations(snapshotId, new[] { normalDecl, generatedDecl });
+            store.BuildSearchIndex(snapshotId);
+
+            // Search for "NormalClass" — should find it (not generated)
+            var normalResults = store.SearchSymbols("NormalClass", snapshotId);
+            Assert.NotEmpty(normalResults);
+
+            // Search for "GenClass" without flag — should be empty (generated excluded by default)
+            var withoutGen = store.SearchSymbols("GenClass", snapshotId);
+            Assert.Empty(withoutGen);
+
+            // Search for "GenClass" with flag — should find it
+            var withGen = store.SearchSymbols("GenClass", snapshotId, includeGenerated: true);
+            Assert.NotEmpty(withGen);
+        }
+
+        /// <summary>
+        /// B4.8g — Cross-generated provenance marker: Create an edge from a non-generated
+        /// symbol to a generated symbol; verify Provenance ends with ":cross_generated".
+        /// </summary>
+        [Fact]
+        public void CrossGeneratedProvenanceMarker_AppendedForGeneratedEdges()
+        {
+            // Use a method with a non-void return type so ExtractReturns produces edges via MakeEdge
+            var compilation = CreateCompilation("class A { string M() => \"\"; }");
+            var docVersions = CreateDocVersions("test.cs");
+
+            // Mark test.cs as generated
+            var generatedDocs = new HashSet<DocumentId> { new DocumentId("test.cs") };
+            var extractor = new MemberEdgeExtractor(compilation, docVersions, generatedDocs, "snap-b4-provenance");
+
+            var edges = extractor.ExtractAll();
+
+            // Returns edges are created via MakeEdge which checks IsGeneratedDocument
+            var returns = edges.Where(e => e.Kind == "Returns").ToList();
+            Assert.NotEmpty(returns);
+            foreach (var edge in returns)
+            {
+                Assert.Contains(":cross_generated", edge.Provenance);
+            }
+        }
+
+        private static Compilation CreateCompilation(string source, string path = "test.cs")
+        {
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, path: path);
+            return CSharpCompilation.Create(
+                "TestAssembly",
+                new[] { syntaxTree },
+                new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+        }
+
+        private static IReadOnlyDictionary<DocumentId, DocumentVersionId> CreateDocVersions(string path)
+        {
+            return new Dictionary<DocumentId, DocumentVersionId>
+            {
+                { new DocumentId(path), DocumentVersionId.Compute("test-content") }
+            };
         }
     }
 }

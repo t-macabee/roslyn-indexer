@@ -318,14 +318,18 @@ namespace Lurp.Storage
                             signature_start, signature_end,
                             body_start, body_end,
                             name_start, name_end,
-                            is_partial
+                            is_partial,
+                            is_generated,
+                            generator_identity
                         ) VALUES (
                             @symbolId, @documentVersionId,
                             @fullStart, @fullEnd,
                             @signatureStart, @signatureEnd,
                             @bodyStart, @bodyEnd,
                             @nameStart, @nameEnd,
-                            @isPartial
+                            @isPartial,
+                            @isGenerated,
+                            @generatorIdentity
                         )
                         ON CONFLICT(symbol_id, document_version_id)
                         DO UPDATE SET
@@ -337,7 +341,9 @@ namespace Lurp.Storage
                             body_end          = excluded.body_end,
                             name_start        = excluded.name_start,
                             name_end          = excluded.name_end,
-                            is_partial        = excluded.is_partial;
+                            is_partial        = excluded.is_partial,
+                            is_generated      = excluded.is_generated,
+                            generator_identity = excluded.generator_identity;
                     ";
                     command.Parameters.Clear();
                     command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
@@ -351,6 +357,8 @@ namespace Lurp.Storage
                     command.Parameters.AddWithValue("@nameStart", (object?)decl.NameSpan.Start ?? DBNull.Value);
                     command.Parameters.AddWithValue("@nameEnd", (object?)decl.NameSpan.End ?? DBNull.Value);
                     command.Parameters.AddWithValue("@isPartial", decl.IsPartial ? 1 : 0);
+                    command.Parameters.AddWithValue("@isGenerated", decl.IsGenerated ? 1 : 0);
+                    command.Parameters.AddWithValue("@generatorIdentity", (object?)decl.GeneratorIdentity ?? DBNull.Value);
                     command.ExecuteNonQuery();
 
                     if (decl.IsPartial)
@@ -416,7 +424,7 @@ namespace Lurp.Storage
                 isPartial: reader.GetInt32(7) == 1);
         }
 
-        public string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind)
+        public string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false)
         {
             string startCol, endCol;
             switch (viewKind)
@@ -434,7 +442,7 @@ namespace Lurp.Storage
                         "Use GetContainingTypeSource or GetSurroundingLines for this view kind.");
             }
 
-            var (content, start, end) = GetSymbolSpanContent(symbolId, snapshotId, startCol, endCol);
+            var (content, start, end) = GetSymbolSpanContent(symbolId, snapshotId, startCol, endCol, includeGenerated);
             if (content == null || start == null || end == null)
                 return null;
 
@@ -501,7 +509,7 @@ namespace Lurp.Storage
 
 
         private (byte[]? Content, int? Start, int? End) GetSymbolSpanContent(
-            string symbolId, string snapshotId, string startCol, string endCol)
+            string symbolId, string snapshotId, string startCol, string endCol, bool includeGenerated = false)
         {
             EnsureOpen();
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
@@ -515,8 +523,15 @@ namespace Lurp.Storage
                 JOIN document_versions dv ON dv.document_version_id = d.document_version_id
                 WHERE ss.snapshot_id = @snapshotId
                   AND ss.symbol_id = @symbolId
-                LIMIT 1;
             ";
+
+            if (!includeGenerated)
+            {
+                command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
+            }
+
+            command.CommandText += " LIMIT 1;";
+
             command.Parameters.AddWithValue("@symbolId", symbolId);
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
@@ -633,7 +648,7 @@ namespace Lurp.Storage
             }
         }
 
-        public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20)
+        public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false)
         {
             EnsureOpen();
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
@@ -646,11 +661,23 @@ namespace Lurp.Storage
                 SELECT document_path,
                        highlight(source_fts, 1, '<mark>', '</mark>') AS snippet
                 FROM source_fts
+                JOIN documents d ON source_fts.document_path = d.relative_path
+                JOIN document_versions dv ON dv.document_id = d.document_id
+                LEFT JOIN declarations dec ON dec.document_version_id = dv.document_version_id
                 WHERE source_fts MATCH @query
-                  AND snapshot_id = @snapshotId
+                  AND source_fts.snapshot_id = @snapshotId
+            ";
+
+            if (!includeGenerated)
+            {
+                command.CommandText += " AND (dec.is_generated IS NULL OR dec.is_generated = 0)";
+            }
+
+            command.CommandText += @"
                 ORDER BY rank
                 LIMIT @limit;
             ";
+
             command.Parameters.AddWithValue("@query", query);
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
             command.Parameters.AddWithValue("@limit", limit);
@@ -666,7 +693,7 @@ namespace Lurp.Storage
             return results;
         }
 
-        public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20)
+        public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false)
         {
             EnsureOpen();
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
@@ -674,13 +701,23 @@ namespace Lurp.Storage
 
             using var command = connection.CreateCommand();
             command.CommandText = @"
-                SELECT symbol_id, fqn, doc_comment_id, kind
+                SELECT symbol_fts.symbol_id, fqn, doc_comment_id, kind
                 FROM symbol_fts
+                LEFT JOIN declarations dec ON symbol_fts.symbol_id = dec.symbol_id
                 WHERE symbol_fts MATCH @query
-                  AND snapshot_id = @snapshotId
+                  AND symbol_fts.snapshot_id = @snapshotId
+            ";
+
+            if (!includeGenerated)
+            {
+                command.CommandText += " AND (dec.is_generated IS NULL OR dec.is_generated = 0)";
+            }
+
+            command.CommandText += @"
                 ORDER BY rank
                 LIMIT @limit;
             ";
+
             command.Parameters.AddWithValue("@query", query);
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
             command.Parameters.AddWithValue("@limit", limit);
@@ -698,7 +735,7 @@ namespace Lurp.Storage
             return results;
         }
 
-        public SymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId)
+        public SymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
         {
             EnsureOpen();
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
@@ -713,9 +750,17 @@ namespace Lurp.Storage
                        (SELECT MAX(d.is_partial) FROM declarations d WHERE d.symbol_id = s.symbol_id) AS is_partial
                 FROM symbols s
                 JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
+                JOIN declarations d ON d.symbol_id = s.symbol_id
                 WHERE s.fqn = @fqn AND ss.snapshot_id = @snapshotId
-                LIMIT 1;
             ";
+
+            if (!includeGenerated)
+            {
+                command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
+            }
+
+            command.CommandText += " LIMIT 1;";
+
             command.Parameters.AddWithValue("@fqn", fqn);
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
@@ -732,9 +777,17 @@ namespace Lurp.Storage
                        (SELECT MAX(d.is_partial) FROM declarations d WHERE d.symbol_id = s.symbol_id) AS is_partial
                 FROM symbols s
                 JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
+                JOIN declarations d ON d.symbol_id = s.symbol_id
                 WHERE s.fqn LIKE @pattern AND ss.snapshot_id = @snapshotId
-                LIMIT 1;
             ";
+
+            if (!includeGenerated)
+            {
+                command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
+            }
+
+            command.CommandText += " LIMIT 1;";
+
             command.Parameters.AddWithValue("@pattern", $"{fqn}%");
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
 

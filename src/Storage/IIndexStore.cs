@@ -82,14 +82,14 @@ namespace Lurp.Storage
 
         void SaveDeclarations(string snapshotId, IEnumerable<SymbolDeclaration> declarations);
         SymbolInfo? GetSymbolInfo(string symbolId, string snapshotId);
-        string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind);
+        string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false);
         string? GetContainingTypeSource(string symbolId, string snapshotId);
         string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines);
 
         void BuildSearchIndex(string snapshotId);
-        List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20);
-        List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20);
-        SymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId);
+        List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false);
+        List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false);
+        SymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false);
 
         // A5: edges, diagnostics, annotations
         void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges);

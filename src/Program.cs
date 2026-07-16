@@ -182,6 +182,7 @@ namespace Lurp
 
             var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
             var contextLinesArg = args.FirstOrDefault(a => a.StartsWith("--context-lines="))?.Split('=', 2)[1];
+            var includeGenerated = args.Contains("--include-generated");
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
             if (!File.Exists(dbPath))
@@ -291,7 +292,7 @@ namespace Lurp
                 }
                 else
                 {
-                    var source = _indexStore.GetSymbolSource(symbolArg, snapshotId, viewKind);
+                    var source = _indexStore.GetSymbolSource(symbolArg, snapshotId, viewKind, includeGenerated);
                     if (source == null)
                     {
                         Console.Error.WriteLine($"ERROR: Source not found for symbol '{symbolArg}' with view '{viewArg}'.");
@@ -318,6 +319,7 @@ namespace Lurp
             var typeArg = args.FirstOrDefault(a => a.StartsWith("--type="))?.Split('=', 2)[1] ?? "all";
             var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
             var limitArg = args.FirstOrDefault(a => a.StartsWith("--limit="))?.Split('=', 2)[1];
+            var includeGenerated = args.Contains("--include-generated");
             int limit = 20;
             if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, out limit))
             {
@@ -365,7 +367,7 @@ namespace Lurp
 
                 if (typeArg == "source" || typeArg == "all")
                 {
-                    var sourceResults = _indexStore.SearchSource(queryArg, snapshotId, limit);
+                    var sourceResults = _indexStore.SearchSource(queryArg, snapshotId, limit, includeGenerated);
                     foreach (var r in sourceResults)
                     {
                         results.Add(new { type = "source", documentPath = r.DocumentPath, snippet = r.Snippet });
@@ -374,7 +376,7 @@ namespace Lurp
 
                 if (typeArg == "symbol" || typeArg == "all")
                 {
-                    var symbolResults = _indexStore.SearchSymbols(queryArg, snapshotId, limit);
+                    var symbolResults = _indexStore.SearchSymbols(queryArg, snapshotId, limit, includeGenerated);
                     foreach (var r in symbolResults)
                     {
                         results.Add(new { type = "symbol", symbolId = r.SymbolId, fullyQualifiedName = r.FullyQualifiedName, kind = r.Kind, docCommentId = r.DocCommentId });
@@ -401,6 +403,7 @@ namespace Lurp
             }
 
             var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
+            var includeGenerated = args.Contains("--include-generated");
 
             var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
                 ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
@@ -438,7 +441,7 @@ namespace Lurp
                     snapshotId = latestSnapshot;
                 }
 
-                var info = _indexStore.ResolveSymbolByFqn(fqnArg, snapshotId);
+                var info = _indexStore.ResolveSymbolByFqn(fqnArg, snapshotId, includeGenerated);
                 if (info == null)
                 {
                     Console.Error.WriteLine($"ERROR: Symbol with FQN '{fqnArg}' not found in snapshot '{snapshotId}'.");
@@ -546,6 +549,7 @@ namespace Lurp
                         compilation,
                         workspaceInfo.DocumentContents,
                         workspaceInfo.Documents,
+                        workspaceInfo.GeneratedDocuments,
                         snapshotIdStr);
                     var declarations = extractor.ExtractAll();
                     store.SaveDeclarations(snapshotIdStr, declarations);
@@ -558,7 +562,7 @@ namespace Lurp
 
                     // Extract member-level edges
                     var memberEdgeExtractor = new MemberEdgeExtractor(
-                        compilation, workspaceInfo.Documents, snapshotIdStr);
+                        compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotIdStr);
                     var memberEdges = memberEdgeExtractor.ExtractAll();
                     store.SaveEdges(snapshotIdStr, memberEdges);
                     totalEdges += memberEdges.Count;
@@ -606,7 +610,7 @@ namespace Lurp
 
         private static void TestMigration()
         {
-            Console.WriteLine("Testing migration runner...")
+            Console.WriteLine("Testing migration runner...");
 
             var dbPath = Path.Combine(Path.GetDirectoryName(typeof(Program).Assembly.Location)!, "test-index.db");
             if (File.Exists(dbPath))

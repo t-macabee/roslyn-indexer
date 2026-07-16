@@ -10,16 +10,19 @@ public sealed class MemberEdgeExtractor
 {
     private readonly Compilation _compilation;
     private readonly IReadOnlyDictionary<DocumentId, DocumentVersionId> _documentVersions;
+    private readonly IReadOnlySet<DocumentId> _generatedDocuments;
     private readonly string _snapshotId;
     private readonly string _assemblyIdentity;
 
     public MemberEdgeExtractor(
         Compilation compilation,
         IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
+        IReadOnlySet<DocumentId> generatedDocuments,
         string snapshotId)
     {
         _compilation = compilation ?? throw new ArgumentNullException(nameof(compilation));
         _documentVersions = documentVersions ?? throw new ArgumentNullException(nameof(documentVersions));
+        _generatedDocuments = generatedDocuments ?? throw new ArgumentNullException(nameof(generatedDocuments));
         _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
         _assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
     }
@@ -459,11 +462,20 @@ public sealed class MemberEdgeExtractor
         string extractorVersion,
         (string? path, int? sl, int? sc, int? el, int? ec)? location)
     {
+        var sourceDocumentPath = location?.path;
+        var isSourceGenerated = IsGeneratedDocument(sourceDocumentPath);
+
+        var provenance = "compiler_proved";
+        if (isSourceGenerated)
+        {
+            provenance += ":cross_generated";
+        }
+
         return new EdgeRecord(
             sourceSymbolId: sourceId,
             targetSymbolId: targetId,
             kind: kind,
-            provenance: "compiler_proved",
+            provenance: provenance,
             snapshotId: _snapshotId,
             extractorVersion: extractorVersion,
             sourceDocumentPath: location?.path,
@@ -471,6 +483,30 @@ public sealed class MemberEdgeExtractor
             sourceStartColumn: location?.sc,
             sourceEndLine: location?.el,
             sourceEndColumn: location?.ec);
+    }
+
+    private bool IsGeneratedDocument(string? documentPath)
+    {
+        if (string.IsNullOrEmpty(documentPath))
+            return false;
+
+        // Check the explicit generated documents set first
+        var docId = new DocumentId(documentPath);
+        if (_generatedDocuments.Contains(docId))
+            return true;
+
+        var normalized = documentPath.Replace('\\', '/');
+
+        if (normalized.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
+            normalized.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase) ||
+            normalized.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (normalized.Contains("/obj/", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("/generated/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
     }
 
     private (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)?

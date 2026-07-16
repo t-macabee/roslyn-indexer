@@ -142,6 +142,8 @@ namespace Lurp.Storage
         public DeclarationSpan NameSpan { get; }
         public bool IsPartial { get; }
         public string? MetadataJson { get; }
+        public bool IsGenerated { get; }
+        public string? GeneratorIdentity { get; }
 
         public SymbolDeclaration(
             SymbolId symbolId,
@@ -152,7 +154,9 @@ namespace Lurp.Storage
             DeclarationSpan bodySpan,
             DeclarationSpan nameSpan,
             bool isPartial = false,
-            string? metadataJson = null)
+            string? metadataJson = null,
+            bool isGenerated = false,
+            string? generatorIdentity = null)
         {
             SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
             Kind = kind;
@@ -163,6 +167,8 @@ namespace Lurp.Storage
             NameSpan = nameSpan ?? throw new ArgumentNullException(nameof(nameSpan));
             IsPartial = isPartial;
             MetadataJson = metadataJson;
+            IsGenerated = isGenerated;
+            GeneratorIdentity = generatorIdentity;
         }
     }
 }
