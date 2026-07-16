@@ -20,14 +20,14 @@ public sealed class TestAdapter : IFrameworkAdapter
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
 
-        // Detect if this is a test project
+        
         bool isTestProject = IsTestProject(compilation);
         if (!isTestProject)
             return edges;
 
         var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>();
 
-        // Walk all types looking for test methods
+        
         foreach (var type in GetAllNamedTypes(compilation.Assembly.GlobalNamespace))
         {
             foreach (var member in type.GetMembers())
@@ -42,7 +42,7 @@ public sealed class TestAdapter : IFrameworkAdapter
                 if (testMethodId == null)
                     continue;
 
-                // Walk the method body for invocations, object creations, member accesses
+                
                 foreach (var syntaxRef in method.DeclaringSyntaxReferences)
                 {
                     if (syntaxRef.GetSyntax() is not MethodDeclarationSyntax methodSyntax)
@@ -54,10 +54,10 @@ public sealed class TestAdapter : IFrameworkAdapter
 
                     var semanticModel = GetOrCreateSemanticModel(methodSyntax.SyntaxTree, semanticModelCache, compilation);
 
-                    // Collect all symbols referenced in the test body
+                    
                     var referencedSymbols = new HashSet<string>();
 
-                    // Invocations
+                    
                     foreach (var invocation in bodySyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
                     {
                         var symbolInfo = semanticModel.GetSymbolInfo(invocation);
@@ -66,7 +66,7 @@ public sealed class TestAdapter : IFrameworkAdapter
                                 testMethodId, snapshotId, referencedSymbols);
                     }
 
-                    // Object creations
+                    
                     foreach (var creation in bodySyntax.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
                     {
                         var symbolInfo = semanticModel.GetSymbolInfo(creation);
@@ -75,7 +75,7 @@ public sealed class TestAdapter : IFrameworkAdapter
                                 testMethodId, snapshotId, referencedSymbols);
                     }
 
-                    // Member accesses
+                    
                     foreach (var memberAccess in bodySyntax.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
                     {
                         var symbolInfo = semanticModel.GetSymbolInfo(memberAccess);
@@ -92,7 +92,7 @@ public sealed class TestAdapter : IFrameworkAdapter
 
     private static bool IsTestProject(Compilation compilation)
     {
-        // Check by assembly name suffix
+        
         var assemblyName = compilation.Assembly.Name;
         if (assemblyName.EndsWith(".Tests", StringComparison.OrdinalIgnoreCase) ||
             assemblyName.EndsWith(".Test", StringComparison.OrdinalIgnoreCase) ||
@@ -102,7 +102,7 @@ public sealed class TestAdapter : IFrameworkAdapter
             return true;
         }
 
-        // Check for test SDK references
+        
         foreach (var refAsm in compilation.ReferencedAssemblyNames)
         {
             var name = refAsm.Name;
@@ -130,7 +130,7 @@ public sealed class TestAdapter : IFrameworkAdapter
             if (name is "Fact" or "Theory" or "Test" or "TestMethod")
                 return true;
 
-            // Also check the full name for nested attribute classes
+            
             var fullName = attr.AttributeClass.ToDisplayString();
             if (fullName is "Xunit.FactAttribute" or "Xunit.TheoryAttribute" or
                 "NUnit.Framework.TestAttribute" or
@@ -150,7 +150,7 @@ public sealed class TestAdapter : IFrameworkAdapter
         string snapshotId,
         HashSet<string> referencedSymbols)
     {
-        // Get the containing type or the symbol itself for production code reference
+        
         var productionSymbol = symbol is IMethodSymbol or IPropertySymbol or IFieldSymbol or IEventSymbol
             ? symbol.ContainingType
             : symbol;
@@ -158,7 +158,7 @@ public sealed class TestAdapter : IFrameworkAdapter
         if (productionSymbol == null)
             return;
 
-        // Skip if it's in the same assembly (test project internal)
+        
         var productionAssembly = productionSymbol.ContainingAssembly;
         if (productionAssembly != null && productionAssembly.Identity.GetDisplayName() == assemblyIdentity)
             return;
@@ -167,7 +167,7 @@ public sealed class TestAdapter : IFrameworkAdapter
         if (productionId == null)
             return;
 
-        // Skip if already emitted for this test method
+        
         if (!referencedSymbols.Add(productionId))
             return;
 

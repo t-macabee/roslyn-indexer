@@ -290,7 +290,7 @@ namespace Lurp.Storage
                 foreach (var decl in declarations)
                 {
                     command.CommandText = @"
-                        INSERT OR IGNORE INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind, metadata_json, fqn)
+                        INSERT OR REPLACE INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind, metadata_json, fqn)
                         VALUES (@symbolId, @docCommentId, @assemblyIdentity, @kind, @metadataJson, @fqn);
                     ";
                     command.Parameters.Clear();
@@ -303,12 +303,17 @@ namespace Lurp.Storage
                     command.ExecuteNonQuery();
 
                     command.CommandText = @"
-                        INSERT OR IGNORE INTO snapshot_symbols (snapshot_id, symbol_id)
-                        VALUES (@snapshotId, @symbolId);
+                        INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
+                        VALUES (@snapshotId, @symbolId, @fqn, @metadataJson)
+                        ON CONFLICT(snapshot_id, symbol_id) DO UPDATE SET
+                            fqn = excluded.fqn,
+                            metadata_json = excluded.metadata_json;
                     ";
                     command.Parameters.Clear();
                     command.Parameters.AddWithValue("@snapshotId", snapshotId);
                     command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
+                    command.Parameters.AddWithValue("@fqn", (object?)decl.SymbolId.FullyQualifiedName ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@metadataJson", (object?)decl.MetadataJson ?? DBNull.Value);
                     command.ExecuteNonQuery();
 
                     command.CommandText = @"
@@ -393,7 +398,7 @@ namespace Lurp.Storage
 
             using var command = connection.CreateCommand();
             command.CommandText = @"
-                SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, s.fqn, s.metadata_json,
+                SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
                        (SELECT COUNT(*) FROM declarations d WHERE d.symbol_id = s.symbol_id) AS decl_count,
                        (SELECT MAX(d.is_partial) FROM declarations d WHERE d.symbol_id = s.symbol_id) AS is_partial
                 FROM symbols s
@@ -608,7 +613,7 @@ namespace Lurp.Storage
                 using var command = connection.CreateCommand();
                 command.Transaction = transaction;
 
-                // Delete existing FTS entries for this snapshot
+                
                 command.CommandText = "DELETE FROM source_fts WHERE snapshot_id = @snapshotId;";
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
                 command.ExecuteNonQuery();
@@ -616,7 +621,7 @@ namespace Lurp.Storage
                 command.CommandText = "DELETE FROM symbol_fts WHERE snapshot_id = @snapshotId;";
                 command.ExecuteNonQuery();
 
-                // Populate source_fts from document_versions via snapshot_documents
+                
                 command.CommandText = @"
                     INSERT INTO source_fts (document_path, content, snapshot_id, document_version_id)
                     SELECT d.relative_path, CAST(dv.content AS TEXT), sd.snapshot_id, dv.document_version_id
@@ -628,14 +633,14 @@ namespace Lurp.Storage
                 ";
                 command.ExecuteNonQuery();
 
-                // Populate symbol_fts from symbols via snapshot_symbols
+                
                 command.CommandText = @"
                     INSERT INTO symbol_fts (symbol_id, fqn, doc_comment_id, kind, snapshot_id)
-                    SELECT s.symbol_id, s.fqn, s.doc_comment_id, s.kind, ss.snapshot_id
+                    SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind, ss.snapshot_id
                     FROM snapshot_symbols ss
                     JOIN symbols s ON s.symbol_id = ss.symbol_id
                     WHERE ss.snapshot_id = @snapshotId
-                      AND s.fqn IS NOT NULL;
+                      AND ss.fqn IS NOT NULL;
                 ";
                 command.ExecuteNonQuery();
 
@@ -655,8 +660,8 @@ namespace Lurp.Storage
             connection.Open();
 
             using var command = connection.CreateCommand();
-            // Use FTS5 MATCH with highlight() for snippet extraction.
-            // The MATCH parameter uses the FTS5 syntax; we parameterize the term safely.
+            
+            
             command.CommandText = @"
                 SELECT document_path,
                        highlight(source_fts, 1, '<mark>', '</mark>') AS snippet
@@ -743,15 +748,15 @@ namespace Lurp.Storage
 
             using var command = connection.CreateCommand();
 
-            // Exact match first
+            
             command.CommandText = @"
-                SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, s.fqn, s.metadata_json,
+                SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
                        (SELECT COUNT(*) FROM declarations d WHERE d.symbol_id = s.symbol_id) AS decl_count,
                        (SELECT MAX(d.is_partial) FROM declarations d WHERE d.symbol_id = s.symbol_id) AS is_partial
                 FROM symbols s
                 JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
                 JOIN declarations d ON d.symbol_id = s.symbol_id
-                WHERE s.fqn = @fqn AND ss.snapshot_id = @snapshotId
+                WHERE ss.fqn = @fqn AND ss.snapshot_id = @snapshotId
             ";
 
             if (!includeGenerated)
@@ -768,17 +773,17 @@ namespace Lurp.Storage
             if (reader.Read())
                 return ReadSymbolInfo(reader);
 
-            // Fall back to LIKE prefix match
+            
             reader.Close();
             command.Parameters.Clear();
             command.CommandText = @"
-                SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, s.fqn, s.metadata_json,
+                SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
                        (SELECT COUNT(*) FROM declarations d WHERE d.symbol_id = s.symbol_id) AS decl_count,
                        (SELECT MAX(d.is_partial) FROM declarations d WHERE d.symbol_id = s.symbol_id) AS is_partial
                 FROM symbols s
                 JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
                 JOIN declarations d ON d.symbol_id = s.symbol_id
-                WHERE s.fqn LIKE @pattern AND ss.snapshot_id = @snapshotId
+                WHERE ss.fqn LIKE @pattern AND ss.snapshot_id = @snapshotId
             ";
 
             if (!includeGenerated)
@@ -817,9 +822,9 @@ namespace Lurp.Storage
                 isPartial: reader.GetInt32(7) == 1);
         }
 
-        // ──────────────────────────────────────────────
-        // A5: Edges
-        // ──────────────────────────────────────────────
+        
+        
+        
 
         public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
         {
@@ -998,9 +1003,9 @@ namespace Lurp.Storage
             return results;
         }
 
-        // ──────────────────────────────────────────────
-        // A5: Diagnostics
-        // ──────────────────────────────────────────────
+        
+        
+        
 
         public void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics)
         {
@@ -1093,9 +1098,9 @@ namespace Lurp.Storage
             return results;
         }
 
-        // ──────────────────────────────────────────────
-        // A5: Annotations
-        // ──────────────────────────────────────────────
+        
+        
+        
 
         public void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations)
         {
@@ -1172,9 +1177,9 @@ namespace Lurp.Storage
             return results;
         }
 
-        // ──────────────────────────────────────────────
-        // B3: Semantic Changes
-        // ──────────────────────────────────────────────
+        
+        
+        
 
         public void SaveSemanticChanges(string fromSnapshotId, string toSnapshotId, IEnumerable<SemanticChange> changes)
         {
@@ -1267,6 +1272,30 @@ namespace Lurp.Storage
                 ORDER BY built_at_utc;
             ";
             command.Parameters.AddWithValue("@workspaceId", workspaceId);
+
+            var results = new List<string>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                results.Add(reader.GetString(0));
+            }
+            return results;
+        }
+
+        public List<string> GetSymbolIdsInSnapshot(string snapshotId)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT symbol_id
+                FROM snapshot_symbols
+                WHERE snapshot_id = @snapshotId
+                ORDER BY symbol_id;
+            ";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
             var results = new List<string>();
             using var reader = command.ExecuteReader();

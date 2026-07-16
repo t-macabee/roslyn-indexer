@@ -115,10 +115,10 @@ public sealed class SnapshotManifest
     
     
     
-    /// <summary>
-    /// Saves this snapshot to the database (primary path).
-    /// Optionally writes a JSON export if <paramref name="jsonExportPath"/> is provided.
-    /// </summary>
+    
+    
+    
+    
     public void Save(IIndexStore store,
         IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
         string? jsonExportPath = null)

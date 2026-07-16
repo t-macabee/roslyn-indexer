@@ -10,8 +10,8 @@ namespace Lurp.Storage.Migrations
         {
             using var command = connection.CreateCommand();
 
-            // Source content FTS table — indexes document text for full-text search
-            // UNINDEXED columns are stored but not full-text indexed; they are used for filtering.
+            
+            
             command.CommandText = @"
                 CREATE VIRTUAL TABLE IF NOT EXISTS source_fts USING fts5(
                     document_path,
@@ -23,7 +23,7 @@ namespace Lurp.Storage.Migrations
             ";
             command.ExecuteNonQuery();
 
-            // Symbol FTS table — indexes symbol names and FQNs for full-text search
+            
             command.CommandText = @"
                 CREATE VIRTUAL TABLE IF NOT EXISTS symbol_fts USING fts5(
                     symbol_id,

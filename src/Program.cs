@@ -496,10 +496,10 @@ namespace Lurp
             var outputDir = Path.GetFullPath(outputDirArg);
             var dbPath = Path.Combine(outputDir, "index.db");
 
-            // Optional JSON export
+            
             var jsonExportPath = args.FirstOrDefault(a => a.StartsWith("--output-json="))?.Split('=', 2)[1];
 
-            // B5: --skip-adapter flags (multiple allowed)
+            
             var skipAdapters = args.Where(a => a.StartsWith("--skip-adapter="))
                                    .Select(a => a.Split('=', 2)[1])
                                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -523,14 +523,14 @@ namespace Lurp
                 Console.WriteLine($"JSON export: {jsonExportPath}");
             Console.WriteLine();
 
-            // Register MSBuild
+            
             if (!MSBuildLocator.IsRegistered)
             {
                 var instances = MSBuildLocator.RegisterDefaults();
                 Console.WriteLine($"MSBuild: {instances?.MSBuildPath ?? "default"}");
             }
 
-            // Open store and run migrations
+            
             var store = new SqliteIndexStore(dbPath);
             store.Open(dbPath);
             store.RunMigrations();
@@ -538,19 +538,19 @@ namespace Lurp
 
             try
             {
-                // Open solution
+                
                 Console.Write("Loading solution... ");
                 using var workspace = MSBuildWorkspace.Create();
                 var solution = await workspace.OpenSolutionAsync(solutionPathArg);
                 Console.WriteLine($"done ({solution.Projects.Count()} projects).");
 
-                // Compute workspace info
+                
                 var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPathArg))!;
                 Console.Write("Building workspace info... ");
                 var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
                 Console.WriteLine("done.");
 
-                // Create snapshot
+                
                 var snapshotId = SnapshotId.New();
                 var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
                 var snapshotIdStr = snapshotId.ToString();
@@ -559,7 +559,7 @@ namespace Lurp
                 manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath);
                 Console.WriteLine("done.");
 
-                // Index each project compilation
+                
                 int totalDeclarations = 0;
                 int totalEdges = 0;
                 int totalDiagnostics = 0;
@@ -569,7 +569,7 @@ namespace Lurp
                     var projectName = project.Name;
                     Console.Write($"  [{projectName}] ");
 
-                    // Extract symbols
+                    
                     var extractor = new SymbolExtractor(
                         compilation,
                         workspaceInfo.DocumentContents,
@@ -580,26 +580,26 @@ namespace Lurp
                     store.SaveDeclarations(snapshotIdStr, declarations);
                     totalDeclarations += declarations.Count;
 
-                    // Extract edges (type-level)
+                    
                     var edges = extractor.ExtractEdges();
                     store.SaveEdges(snapshotIdStr, edges);
                     totalEdges += edges.Count;
 
-                    // Extract member-level edges
+                    
                     var memberEdgeExtractor = new MemberEdgeExtractor(
                         compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotIdStr);
                     var memberEdges = memberEdgeExtractor.ExtractAll();
                     store.SaveEdges(snapshotIdStr, memberEdges);
                     totalEdges += memberEdges.Count;
 
-                    // Extract polymorphism edges (MayDispatchTo)
+                    
                     var polyExtractor = new PolymorphismExtractor(
                         compilation, snapshotIdStr);
                     var polyEdges = polyExtractor.ExtractAll();
                     store.SaveEdges(snapshotIdStr, polyEdges);
                     totalEdges += polyEdges.Count;
 
-                    // B6: Extract reflection edges
+                    
                     int reflectionEdgesCount = 0;
                     try
                     {
@@ -616,7 +616,7 @@ namespace Lurp
                         Console.Error.WriteLine($"WARNING: Reflection extraction failed: {ex.Message}");
                     }
 
-                    // B5: Run framework adapters
+                    
                     int adapterEdgesCount = 0;
                     var adaptersToRun = Adapters.AdapterRegistry.GetAdapters(skipAdapters);
                     foreach (var adapter in adaptersToRun)
@@ -632,11 +632,11 @@ namespace Lurp
                         catch (Exception ex)
                         {
                             Console.Error.WriteLine($"ERROR: Adapter '{adapter.Name}' failed: {ex.Message}");
-                            // continue to next adapter
+                            
                         }
                     }
 
-                    // Extract diagnostics
+                    
                     var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
                     store.SaveDiagnostics(snapshotIdStr, diagnostics);
                     totalDiagnostics += diagnostics.Count;
@@ -653,14 +653,14 @@ namespace Lurp
                 Console.WriteLine($"  Diagnostics:  {totalDiagnostics}");
                 Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
 
-                // B3: auto-diff against previous snapshot if one exists
+                
                 var storageWsId = new Storage.WorkspaceId(manifest.WorkspaceId.Value);
                 var previousManifest = store.LoadLatestSnapshot(storageWsId);
                 if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
                 {
                     Console.WriteLine();
                     Console.Write("Computing semantic diff from previous snapshot... ");
-                    var differ = new SemanticDiffer(dbPath, store);
+                    var differ = new SemanticDiffer(store);
                     var diffChanges = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
                     store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
                     Console.WriteLine($"done ({diffChanges.Count} changes).");
@@ -742,7 +742,7 @@ namespace Lurp
             store.Open(dbPath);
             try
             {
-                var differ = new SemanticDiffer(dbPath, store);
+                var differ = new SemanticDiffer(store);
                 var changes = differ.ComputeDiff(fromSnapshot, toSnapshot);
 
                 var json = JsonSerializer.Serialize(new

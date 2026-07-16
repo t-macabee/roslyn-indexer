@@ -10,8 +10,8 @@ namespace Lurp.Storage.Migrations
         {
             using var command = connection.CreateCommand();
 
-            // edges — type-level dependency relationships with provenance
-            // No FK constraint on snapshot_id — integrity managed by app layer.
+            
+            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS edges (
                     edge_id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +33,7 @@ namespace Lurp.Storage.Migrations
             command.CommandText = "CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_symbol_id);";
             command.ExecuteNonQuery();
 
-            // diagnostics — compiler warnings/errors per project, snapshot-bound
+            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS diagnostics (
                     diagnostic_id  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,7 +57,7 @@ namespace Lurp.Storage.Migrations
             command.CommandText = "CREATE INDEX IF NOT EXISTS idx_diagnostics_project ON diagnostics(project_name);";
             command.ExecuteNonQuery();
 
-            // annotations — per-symbol annotations (supplemental metadata)
+            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS annotations (
                     annotation_id  INTEGER PRIMARY KEY AUTOINCREMENT,

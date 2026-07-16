@@ -21,9 +21,9 @@ internal static class CompilationHelper
         }
     }
 
-    /// <summary>
-    /// Collects all compiler diagnostics for a given project/compilation pair as DiagnosticRecords.
-    /// </summary>
+    
+    
+    
     public static List<DiagnosticRecord> GetDiagnostics(
         string projectName,
         Compilation compilation)

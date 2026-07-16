@@ -61,7 +61,7 @@ public class MigrationRunnerTests : IDisposable
 
         runner.RunMigrations();
 
-        Assert.Equal(8, runner.GetCurrentSchemaVersion());
+        Assert.Equal(9, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class MigrationRunnerTests : IDisposable
         runner.RunMigrations();
         runner.RunMigrations();
 
-        Assert.Equal(8, runner.GetCurrentSchemaVersion());
+        Assert.Equal(9, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -348,7 +348,7 @@ public class MigrationRunnerTests : IDisposable
         
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(8, runner.GetCurrentSchemaVersion());
+        Assert.Equal(9, runner.GetCurrentSchemaVersion());
 
         
         using (var connection = new SqliteConnection($"Data Source={_dbPath}"))
@@ -837,7 +837,7 @@ public class MigrationRunnerTests : IDisposable
 
             store.SaveDeclarations(snapshotId, new[] { decl });
 
-            // Partial prefix match
+            
             var info = store.ResolveSymbolByFqn("MyNs.My", snapshotId);
             Assert.NotNull(info);
             Assert.Equal("MyNs.MyClass", info!.FullyQualifiedName);
@@ -879,7 +879,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(8, runner.GetCurrentSchemaVersion());
+            Assert.Equal(9, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -900,7 +900,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(8, runner.GetCurrentSchemaVersion());
+            Assert.Equal(9, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -959,7 +959,7 @@ public class MigrationRunnerTests : IDisposable
             Assert.Equal("T:Ns.Bar|asm1", loaded[0].TargetSymbolId);
             Assert.Equal("Inherits", loaded[0].Kind);
 
-            // Filter by symbolId
+            
             var filtered = store.GetEdges(snapshotId, "T:Ns.Bar|asm1");
             Assert.Single(filtered);
 
@@ -1068,26 +1068,26 @@ public class MigrationRunnerTests : IDisposable
             return store;
         }
 
-        /// <summary>
-        /// 5.1 — Run Migration_006 twice; verify idempotent (no crash, version stays 6).
-        /// </summary>
+        
+        
+        
         [Fact]
         public void Migration006_RunTwice_IsIdempotent()
         {
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(8, runner.GetCurrentSchemaVersion());
+            Assert.Equal(9, runner.GetCurrentSchemaVersion());
 
-            // Second run — must not throw and version stays the same
+            
             runner.RunMigrations();
-            Assert.Equal(8, runner.GetCurrentSchemaVersion());
+            Assert.Equal(9, runner.GetCurrentSchemaVersion());
         }
 
-        /// <summary>
-        /// 5.2 — Insert an edge with all new fields populated, read it back,
-        /// and verify every field round-trips.
-        /// </summary>
+        
+        
+        
+        
         [Fact]
         public void SaveAndGetEdge_WithAllNewFields_RoundTrips()
         {
@@ -1130,9 +1130,9 @@ public class MigrationRunnerTests : IDisposable
             store.Close();
         }
 
-        /// <summary>
-        /// 5.2 (variant) — Insert with nullable fields null, verify they round-trip as null/empty.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void SaveAndGetEdge_WithNullLocationFields_RoundTrips()
         {
@@ -1168,17 +1168,17 @@ public class MigrationRunnerTests : IDisposable
             store.Close();
         }
 
-        /// <summary>
-        /// 5.3 — Ensure the existing backward-compatible constructor (4 params)
-        /// still works end-to-end through SaveEdges/GetEdges.
-        /// </summary>
+        
+        
+        
+        
         [Fact]
         public void SaveAndGetEdge_BackwardCompatibleConstructor_StillWorks()
         {
             var store = CreateStore();
             var snapshotId = "snap-b0-bc-001";
 
-            // Using the old-style 4-param constructor (matches pre-B0 callers)
+            
             var edges = new List<EdgeRecord>
             {
                 new("T:Ns.Foo|asm1", "T:Ns.Bar|asm1", "Inherits", "roslyn"),
@@ -1190,30 +1190,30 @@ public class MigrationRunnerTests : IDisposable
             var loaded = store.GetEdges(snapshotId);
             Assert.Equal(2, loaded.Count);
 
-            // First edge: all params provided
+            
             Assert.Equal("T:Ns.Foo|asm1", loaded[0].SourceSymbolId);
             Assert.Equal("T:Ns.Bar|asm1", loaded[0].TargetSymbolId);
             Assert.Equal("Inherits", loaded[0].Kind);
             Assert.Equal("roslyn", loaded[0].Provenance);
-            // New fields should default to empty/null
-            Assert.Equal(snapshotId, loaded[0].SnapshotId); // from SaveEdges param
-            Assert.Equal("", loaded[0].ExtractorVersion);   // not provided → empty string
+            
+            Assert.Equal(snapshotId, loaded[0].SnapshotId); 
+            Assert.Equal("", loaded[0].ExtractorVersion);   
             Assert.Null(loaded[0].SourceDocumentPath);
 
-            // Second edge: provenance omitted (defaults to empty string)
+            
             Assert.Equal("Implements", loaded[1].Kind);
             Assert.Equal("", loaded[1].Provenance);
 
-            // Filter by symbolId still works
+            
             var filtered = store.GetEdges(snapshotId, "T:Ns.Bar|asm1");
             Assert.Single(filtered);
 
             store.Close();
         }
 
-        /// <summary>
-        /// 5.2 — Verify GetEdgesByKind returns only edges of the requested kind.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void GetEdgesByKind_FiltersCorrectly()
         {
@@ -1240,9 +1240,9 @@ public class MigrationRunnerTests : IDisposable
             store.Close();
         }
 
-        /// <summary>
-        /// 5.2 — Verify GetIncomingEdges returns edges where symbol is the target.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void GetIncomingEdges_ReturnsEdgesTargetingSymbol()
         {
@@ -1264,9 +1264,9 @@ public class MigrationRunnerTests : IDisposable
             store.Close();
         }
 
-        /// <summary>
-        /// 5.2 — Verify GetOutgoingEdges returns edges where symbol is the source.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void GetOutgoingEdges_ReturnsEdgesFromSymbol()
         {
@@ -1522,15 +1522,46 @@ class Derived : Base {
                 File.Delete(_dbPath);
         }
 
+        private static byte[] StringToBytes(string text) => System.Text.Encoding.UTF8.GetBytes(text);
+
+        private static void CreateSnapshotWithDocument(
+            SqliteIndexStore store, string snapshotId)
+        {
+            var sourceBytes = StringToBytes(
+                "using System;\n" +
+                "namespace TestNs {\n" +
+                "    public class Foo {\n" +
+                "        public void Bar() { Console.WriteLine(); }\n" +
+                "    }\n" +
+                "}\n");
+
+            var lineStarts = "[0,14,33,56,107,113]";
+
+            var manifest = new SnapshotManifest(
+                snapshotId: snapshotId,
+                workspaceId: "workspace:///root/proj",
+                gitRoot: "/root",
+                solutionPath: "/root/proj",
+                sdkVersion: "10.0.301",
+                compilerVersion: "4.12.0.0",
+                createdAtUtc: DateTime.UtcNow,
+                documents: new List<DocumentVersion>
+                {
+                    new("doc-" + snapshotId, "src/Foo.cs", "hash1", "utf-8", lineStarts, DateTime.MinValue,
+                        sourceBytes, lineStarts),
+                });
+            store.SaveSnapshot(manifest);
+        }
+
         [Fact]
         public void Migration_007_IsIdempotent()
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(8, runner.GetCurrentSchemaVersion());
+            Assert.Equal(9, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(8, runner.GetCurrentSchemaVersion());
+            Assert.Equal(9, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1628,6 +1659,8 @@ class Derived : Base {
 
             var fromSnapshotId = "snap-b3-005";
             var toSnapshotId = "snap-b3-006";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
 
             var fromSymbols = new List<string>
             {
@@ -1644,10 +1677,10 @@ class Derived : Base {
             {
                 var decl = MakeDecl(
                     symbolId: symbolId,
-                    docCommentId: "T:Ns.Foo",
+                    docCommentId: "M:Ns.Foo",
                     assembly: "asm1",
                     kind: SymbolKind.Method,
-                    docVersionId: "doc1",
+                    docVersionId: "doc-" + fromSnapshotId,
                     fullS: 0, fullE: 10,
                     sigS: 0, sigE: 5,
                     bodyS: 6, bodyE: 10,
@@ -1659,10 +1692,10 @@ class Derived : Base {
             {
                 var decl = MakeDecl(
                     symbolId: symbolId,
-                    docCommentId: "T:Ns.Baz",
+                    docCommentId: "M:Ns.Baz",
                     assembly: "asm1",
                     kind: SymbolKind.Method,
-                    docVersionId: "doc1",
+                    docVersionId: "doc-" + toSnapshotId,
                     fullS: 0, fullE: 10,
                     sigS: 0, sigE: 5,
                     bodyS: 6, bodyE: 10,
@@ -1670,7 +1703,7 @@ class Derived : Base {
                 store.SaveDeclarations(toSnapshotId, new List<SymbolDeclaration> { decl });
             }
 
-            var differ = new SemanticDiffer(_dbPath, store);
+            var differ = new SemanticDiffer(store);
             var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var symbolAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolAdded);
@@ -1712,18 +1745,18 @@ class Derived : Base {
             store.SaveEdges(fromSnapshotId, fromEdges);
             store.SaveEdges(toSnapshotId, toEdges);
 
-            var differ = new SemanticDiffer(_dbPath, store);
+            var differ = new SemanticDiffer(store);
             var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var edgeAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeAdded);
             Assert.NotNull(edgeAdded);
             Assert.Equal("M:Ns.Bar|asm1", edgeAdded.SymbolId);
-            Assert.Equal("M:Ns.Baz|asm1", edgeAdded.DetailJson!);
+            Assert.Contains("\"target\":\"M:Ns.Baz|asm1\"", edgeAdded.DetailJson!);
 
             var edgeRemoved = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeRemoved);
             Assert.NotNull(edgeRemoved);
             Assert.Equal("M:Ns.Foo|asm1", edgeRemoved.SymbolId);
-            Assert.Equal("M:Ns.Bar|asm1", edgeRemoved.DetailJson!);
+            Assert.Contains("\"target\":\"M:Ns.Bar|asm1\"", edgeRemoved.DetailJson!);
         }
 
         [Fact]
@@ -1735,6 +1768,8 @@ class Derived : Base {
 
             var fromSnapshotId = "snap-b3-011";
             var toSnapshotId = "snap-b3-012";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
 
             var symbolId = "M:Ns.Foo|asm1";
 
@@ -1743,7 +1778,7 @@ class Derived : Base {
                 docCommentId: "M:Ns.Foo",
                 assembly: "asm1",
                 kind: SymbolKind.Method,
-                docVersionId: "doc1",
+                docVersionId: "doc-" + fromSnapshotId,
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
@@ -1755,7 +1790,7 @@ class Derived : Base {
                 docCommentId: "M:Ns.Foo",
                 assembly: "asm1",
                 kind: SymbolKind.Method,
-                docVersionId: "doc1",
+                docVersionId: "doc-" + toSnapshotId,
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
@@ -1765,7 +1800,7 @@ class Derived : Base {
             store.SaveDeclarations(fromSnapshotId, new List<SymbolDeclaration> { fromDecl });
             store.SaveDeclarations(toSnapshotId, new List<SymbolDeclaration> { toDecl });
 
-            var differ = new SemanticDiffer(_dbPath, store);
+            var differ = new SemanticDiffer(store);
             var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -1782,6 +1817,8 @@ class Derived : Base {
 
             var fromSnapshotId = "snap-b3-013";
             var toSnapshotId = "snap-b3-014";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
 
             var symbolId = "M:Ns.Foo|asm1";
 
@@ -1790,27 +1827,29 @@ class Derived : Base {
                 docCommentId: "M:Ns.Foo",
                 assembly: "asm1",
                 kind: SymbolKind.Method,
-                docVersionId: "doc1",
+                docVersionId: "doc-" + fromSnapshotId,
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
-                nameS: 0, nameE: 5);
+                nameS: 0, nameE: 5,
+                fqn: "Ns.OldName");
 
             var toDecl = MakeDecl(
                 symbolId: symbolId,
                 docCommentId: "M:Ns.Foo",
                 assembly: "asm1",
                 kind: SymbolKind.Method,
-                docVersionId: "doc1",
+                docVersionId: "doc-" + toSnapshotId,
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
-                nameS: 0, nameE: 5);
+                nameS: 0, nameE: 5,
+                fqn: "Ns.NewName");
 
             store.SaveDeclarations(fromSnapshotId, new List<SymbolDeclaration> { fromDecl });
             store.SaveDeclarations(toSnapshotId, new List<SymbolDeclaration> { toDecl });
 
-            var differ = new SemanticDiffer(_dbPath, store);
+            var differ = new SemanticDiffer(store);
             var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var symbolRenamed = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRenamed);
@@ -1829,24 +1868,37 @@ class Derived : Base {
 
             var fromSnapshotId = "snap-b3-015";
             var toSnapshotId = "snap-b3-016";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
 
             var symbolId = "M:Ns.Foo|asm1";
 
-            var decl = MakeDecl(
+            var fromDecl = MakeDecl(
                 symbolId: symbolId,
                 docCommentId: "M:Ns.Foo",
                 assembly: "asm1",
                 kind: SymbolKind.Method,
-                docVersionId: "doc1",
+                docVersionId: "doc-" + fromSnapshotId,
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5);
 
-            store.SaveDeclarations(fromSnapshotId, new List<SymbolDeclaration> { decl });
-            store.SaveDeclarations(toSnapshotId, new List<SymbolDeclaration> { decl });
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo",
+                assembly: "asm1",
+                kind: SymbolKind.Method,
+                docVersionId: "doc-" + toSnapshotId,
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5);
 
-            var differ = new SemanticDiffer(_dbPath, store);
+            store.SaveDeclarations(fromSnapshotId, new List<SymbolDeclaration> { fromDecl });
+            store.SaveDeclarations(toSnapshotId, new List<SymbolDeclaration> { toDecl });
+
+            var differ = new SemanticDiffer(store);
             var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             Assert.Empty(changes);
@@ -1901,23 +1953,23 @@ class Derived : Base {
             store.SaveSnapshot(manifest);
         }
 
-        /// <summary>
-        /// B4.8a — Migration_008 idempotency: Run migration twice; no crash, version stays 8.
-        /// Verify is_generated and generator_identity columns exist.
-        /// </summary>
+        
+        
+        
+        
         [Fact]
         public void Migration008_RunTwice_IsIdempotent()
         {
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(8, runner.GetCurrentSchemaVersion());
+            Assert.Equal(9, runner.GetCurrentSchemaVersion());
 
-            // Second run — must not throw and version stays the same
+            
             runner.RunMigrations();
-            Assert.Equal(8, runner.GetCurrentSchemaVersion());
+            Assert.Equal(9, runner.GetCurrentSchemaVersion());
 
-            // Verify columns exist
+            
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
             using var cmd = connection.CreateCommand();
@@ -1935,11 +1987,11 @@ class Derived : Base {
             Assert.True(hasGeneratorIdentity, "generator_identity column should exist after migration 008");
         }
 
-        /// <summary>
-        /// B4.8d — Declaration round-trip with is_generated: Save a declaration with
-        /// IsGenerated = true and GeneratorIdentity = "SG/FooGenerator"; read back
-        /// via GetSymbolInfo; verify both fields survive.
-        /// </summary>
+        
+        
+        
+        
+        
         [Fact]
         public void SaveDeclaration_WithIsGenerated_RoundTrips()
         {
@@ -1948,7 +2000,7 @@ class Derived : Base {
             CreateSnapshotWithDocument(store, snapshotId, "src/Generated.cs",
                 "// <auto-generated>\nclass GeneratedClass { }");
 
-            // Content: "// <auto-generated>\nclass GeneratedClass { }" = 44 bytes
+            
             var decl = new SymbolDeclaration(
                 symbolId: new SymbolId("T:GeneratedClass", "asm1", "GeneratedClass"),
                 kind: SymbolKind.Type,
@@ -1966,19 +2018,19 @@ class Derived : Base {
             Assert.NotNull(info);
             Assert.Equal("T:GeneratedClass", info!.SymbolId.DocCommentId);
 
-            // Verify is_generated field survives via GetSymbolSource with includeGenerated
+            
             var sourceWithout = store.GetSymbolSource("T:GeneratedClass|asm1", snapshotId, ViewKind.Declaration);
-            Assert.Null(sourceWithout); // excluded by default
+            Assert.Null(sourceWithout); 
 
             var sourceWith = store.GetSymbolSource("T:GeneratedClass|asm1", snapshotId, ViewKind.Declaration, includeGenerated: true);
             Assert.NotNull(sourceWith);
             Assert.Contains("GeneratedClass", sourceWith!);
         }
 
-        /// <summary>
-        /// B4.8e — GetSymbolSource excludes generated by default: Save a generated declaration
-        /// with a body span; GetSymbolSource without flag returns null; with includeGenerated:true returns body.
-        /// </summary>
+        
+        
+        
+        
         [Fact]
         public void GetSymbolSource_ExcludesGeneratedByDefault()
         {
@@ -2000,32 +2052,32 @@ class Derived : Base {
 
             store.SaveDeclarations(snapshotId, new[] { decl });
 
-            // Default: should be excluded
+            
             var without = store.GetSymbolSource("T:Gen|asm1", snapshotId, ViewKind.Declaration);
             Assert.Null(without);
 
-            // With flag: should be included
+            
             var with = store.GetSymbolSource("T:Gen|asm1", snapshotId, ViewKind.Declaration, includeGenerated: true);
             Assert.NotNull(with);
         }
 
-        /// <summary>
-        /// B4.8f — Search excludes generated by default: Index two documents (one generated
-        /// with a unique token). Search without --include-generated → 0 results. With flag → results.
-        /// </summary>
+        
+        
+        
+        
         [Fact]
         public void Search_ExcludesGeneratedByDefault()
         {
             var store = CreateStore();
             var snapshotId = "snap-b4-search-001";
 
-            // Non-generated document
+            
             CreateSnapshotWithDocument(store, snapshotId, "src/Normal.cs",
                 "class NormalClass { }");
 
-            // Generated document with unique token — need a separate snapshot approach
-            // Since we can't easily add a second document to the same snapshot via helper,
-            // we'll save declarations instead
+            
+            
+            
             var normalDecl = new SymbolDeclaration(
                 symbolId: new SymbolId("T:NormalClass", "asm1", "NormalClass"),
                 kind: SymbolKind.Type,
@@ -2039,7 +2091,7 @@ class Derived : Base {
             var generatedDecl = new SymbolDeclaration(
                 symbolId: new SymbolId("T:GenClass", "asm1", "GenClass"),
                 kind: SymbolKind.Type,
-                documentVersionId: "doc-src/Normal.cs", // same doc for simplicity
+                documentVersionId: "doc-src/Normal.cs", 
                 fullSpan: new DeclarationSpan(0, 20),
                 signatureSpan: new DeclarationSpan(0, 15),
                 bodySpan: new DeclarationSpan(16, 19),
@@ -2050,37 +2102,37 @@ class Derived : Base {
             store.SaveDeclarations(snapshotId, new[] { normalDecl, generatedDecl });
             store.BuildSearchIndex(snapshotId);
 
-            // Search for "NormalClass" — should find it (not generated)
+            
             var normalResults = store.SearchSymbols("NormalClass", snapshotId);
             Assert.NotEmpty(normalResults);
 
-            // Search for "GenClass" without flag — should be empty (generated excluded by default)
+            
             var withoutGen = store.SearchSymbols("GenClass", snapshotId);
             Assert.Empty(withoutGen);
 
-            // Search for "GenClass" with flag — should find it
+            
             var withGen = store.SearchSymbols("GenClass", snapshotId, includeGenerated: true);
             Assert.NotEmpty(withGen);
         }
 
-        /// <summary>
-        /// B4.8g — Cross-generated provenance marker: Create an edge from a non-generated
-        /// symbol to a generated symbol; verify Provenance ends with ":cross_generated".
-        /// </summary>
+        
+        
+        
+        
         [Fact]
         public void CrossGeneratedProvenanceMarker_AppendedForGeneratedEdges()
         {
-            // Use a method with a non-void return type so ExtractReturns produces edges via MakeEdge
+            
             var compilation = CreateCompilation("class A { string M() => \"\"; }");
             var docVersions = CreateDocVersions("test.cs");
 
-            // Mark test.cs as generated
+            
             var generatedDocs = new HashSet<DocumentId> { new DocumentId("test.cs") };
             var extractor = new MemberEdgeExtractor(compilation, docVersions, generatedDocs, "snap-b4-provenance");
 
             var edges = extractor.ExtractAll();
 
-            // Returns edges are created via MakeEdge which checks IsGeneratedDocument
+            
             var returns = edges.Where(e => e.Kind == "Returns").ToList();
             Assert.NotEmpty(returns);
             foreach (var edge in returns)
@@ -2129,7 +2181,7 @@ class Derived : Base {
             foreach (var asm in refAssemblies)
             {
                 try { references.Add(MetadataReference.CreateFromFile(asm)); }
-                catch { /* skip if assembly not found */ }
+                catch {  }
             }
             return CSharpCompilation.Create(
                 "TestAssembly",
@@ -2137,11 +2189,12 @@ class Derived : Base {
                 references);
         }
 
-        // ─── AspNetCoreAdapter ───────────────────────────────────────────
+        
 
-        /// <summary>
-        /// B5.3 — Controller with [Route] + [HttpGet] action emits RoutesTo edge.
-        /// </summary>
+        
+        
+        
+        
         [Fact]
         public void AspNetCore_RouteAttribute_EmitsRoutesToEdge()
         {
@@ -2155,19 +2208,43 @@ public class UsersController : ControllerBase
     public IActionResult GetUser(int id) => Ok();
 }
 ";
-            // Add ASP.NET Core references if available; test may be limited without them
+            
             var compilation = CreateCompilation(source);
             var adapter = new AspNetCoreAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-aspnet-001");
 
-            // Without ASP.NET Core refs, the controller won't be detected
-            // This test verifies the adapter runs without crashing
             Assert.NotNull(edges);
+            
+            
         }
 
-        /// <summary>
-        /// B5.3 — Plain class with no ASP.NET references emits zero edges.
-        /// </summary>
+        
+        
+        
+        [Fact]
+        public void AspNetCore_HttpPostAttribute_EmitsRoutesToEdge()
+        {
+            var source = @"
+using Microsoft.AspNetCore.Mvc;
+
+[Route(""api/orders"")]
+public class OrdersController : ControllerBase
+{
+    [HttpPost]
+    public IActionResult CreateOrder([FromBody] object order) => Ok();
+}
+";
+            var compilation = CreateCompilation(source);
+            var adapter = new AspNetCoreAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-aspnet-003");
+
+            Assert.NotNull(edges);
+            
+        }
+
+        
+        
+        
         [Fact]
         public void AspNetCore_NoController_EmitsZeroEdges()
         {
@@ -2184,11 +2261,11 @@ public class PlainClass
             Assert.Empty(edges);
         }
 
-        // ─── DependencyInjectionAdapter ─────────────────────────────────
+        
 
-        /// <summary>
-        /// B5.4 — AddScoped<I, T>() pattern emits Registers edge.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void DI_AddScoped_EmitsRegistersEdge()
         {
@@ -2210,15 +2287,93 @@ public class Startup
             var adapter = new DependencyInjectionAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-di-001");
 
-            // Without DI refs, may not find the actual registrations; just verify no crash
+            Assert.NotNull(edges);
+            
+        }
+
+        
+        
+        
+        [Fact]
+        public void DI_AddTransient_EmitsRegistersEdge()
+        {
+            var source = @"
+using Microsoft.Extensions.DependencyInjection;
+
+public interface IService { }
+public class Service : IService { }
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddTransient<IService, Service>();
+    }
+}
+";
+            var compilation = CreateCompilation(source);
+            var adapter = new DependencyInjectionAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-di-003");
+
             Assert.NotNull(edges);
         }
 
-        // ─── MediatRAdapter ─────────────────────────────────────────────
+        
+        
+        
+        [Fact]
+        public void DI_AddSingleton_EmitsRegistersEdge()
+        {
+            var source = @"
+using Microsoft.Extensions.DependencyInjection;
 
-        /// <summary>
-        /// B5.5 — IRequest + IRequestHandler emits Handles edge.
-        /// </summary>
+public interface IService { }
+public class Service : IService { }
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<IService, Service>();
+    }
+}
+";
+            var compilation = CreateCompilation(source);
+            var adapter = new DependencyInjectionAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-di-004");
+
+            Assert.NotNull(edges);
+        }
+
+        
+
+        
+        
+        
+        [Fact]
+        public void MediatR_INotificationHandler_EmitsHandlesEdge()
+        {
+            var source = @"
+using MediatR;
+
+public class UserCreatedEvent : INotification { }
+public class UserCreatedHandler : INotificationHandler<UserCreatedEvent>
+{
+    public Task Handle(UserCreatedEvent notification, CancellationToken cancellationToken)
+        => Task.CompletedTask;
+}
+";
+            var compilation = CreateCompilation(source);
+            var adapter = new MediatRAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-mediatr-003");
+
+            
+            Assert.Empty(edges);
+        }
+
+        
+        
+        
         [Fact]
         public void MediatR_RequestHandler_EmitsHandlesEdge()
         {
@@ -2237,13 +2392,13 @@ public class GetUserHandler : IRequestHandler<GetUserQuery, User>
             var adapter = new MediatRAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-mediatr-001");
 
-            // Without MediatR references in compilation, should emit zero edges
+            
             Assert.Empty(edges);
         }
 
-        /// <summary>
-        /// B5.5 — No MediatR references: adapter returns zero edges without crashing.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void MediatR_NoReferences_EmitsZeroEdges()
         {
@@ -2257,11 +2412,11 @@ public class Plain { }
             Assert.Empty(edges);
         }
 
-        // ─── EfCoreAdapter ─────────────────────────────────────────────
+        
 
-        /// <summary>
-        /// B5.6 — DbContext with DbSet&lt;User&gt; emits MapsTo edge.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void EfCore_DbSet_EmitsMapsToEdge()
         {
@@ -2278,15 +2433,15 @@ public class AppDbContext : DbContext
             var adapter = new EfCoreAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-ef-001");
 
-            // Without EF Core refs, DbContext won't be detected; verify no crash
             Assert.NotNull(edges);
+            
         }
 
-        // ─── SerializationAdapter ──────────────────────────────────────
+        
 
-        /// <summary>
-        /// B5.7 — [JsonPropertyName(""email"")] produces an edge with serialized name.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void Serialization_JsonPropertyName_EmitsEdge()
         {
@@ -2303,7 +2458,7 @@ public class UserProfile
             var adapter = new SerializationAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-serial-001");
 
-            // Verify edges are emitted (References from Email -> string)
+            
             var emailEdges = edges.Where(e =>
                 e.Kind == "References" &&
                 e.SourceSymbolId.Contains("Email")).ToList();
@@ -2311,9 +2466,9 @@ public class UserProfile
             Assert.NotEmpty(emailEdges);
         }
 
-        /// <summary>
-        /// B5.7 — No serialization attributes: zero edges.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void Serialization_NoAttributes_EmitsZeroEdges()
         {
@@ -2330,15 +2485,15 @@ public class Plain
             Assert.Empty(edges);
         }
 
-        // ─── TestAdapter ────────────────────────────────────────────────
+        
 
-        /// <summary>
-        /// B5.8 — [Fact] method in a .Tests project emits TestedBy edge to production code.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void TestAdapter_FactMethod_EmitsTestedByEdge()
         {
-            // Use a project name that ends with .Tests to trigger test project detection
+            
             var syntaxTree = CSharpSyntaxTree.ParseText(@"
 using Xunit;
 
@@ -2365,13 +2520,13 @@ public class BarTests
             var adapter = new TestAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-test-001");
 
-            // Without xunit references, no test methods are detected
+            
             Assert.Empty(edges);
         }
 
-        /// <summary>
-        /// B5.8 — Non-test project emits zero edges.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void TestAdapter_NonTestProject_EmitsZeroEdges()
         {
@@ -2393,11 +2548,11 @@ public class Foo
             Assert.Empty(edges);
         }
 
-        // ─── EdgeRecord Constructor ─────────────────────────────────────
+        
 
-        /// <summary>
-        /// B5.x — Verify the EdgeRecord constructor with snapshotId and extractorVersion works.
-        /// </summary>
+        
+        
+        
         [Fact]
         public void EdgeRecord_FullConstructor_RoundTrips()
         {
@@ -2641,6 +2796,90 @@ public class Foo
             Assert.Equal("M:B|asm1", hop.TargetSymbolId);
             store.Close();
         }
+
+        [Fact]
+        public void TraceImpact_EmptyEdgeListForExistingSymbol_ReturnsEmpty()
+        {
+            var snapshotId = "snap-b7-010";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            
+            var paths = traverser.TraceImpact("M:B|asm1", ImpactDirection.Downstream);
+
+            Assert.Empty(paths);
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_LeafNodeNoOutgoingEdges_ReturnsEmpty()
+        {
+            var snapshotId = "snap-b7-011";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:A|asm1", "M:C|asm1", "Calls", "cp", snapshotId, "v1"),
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            
+            var paths = traverser.TraceImpact("M:C|asm1", ImpactDirection.Downstream);
+
+            Assert.Empty(paths);
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_MultipleEdgeKindsWithFiltering_ReturnsCorrectSubset()
+        {
+            var snapshotId = "snap-b7-012";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:A|asm1", "M:C|asm1", "Reads", "cp", snapshotId, "v1"),
+                new("M:A|asm1", "M:D|asm1", "Writes", "cp", snapshotId, "v1"),
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            
+            var paths = traverser.TraceImpact(
+                "M:A|asm1", ImpactDirection.Downstream,
+                allowedEdgeKinds: new HashSet<string> { "Calls", "Reads" });
+
+            Assert.Equal(2, paths.Count);
+            Assert.Contains(paths, p => p.Hops[0].TargetSymbolId == "M:B|asm1");
+            Assert.Contains(paths, p => p.Hops[0].TargetSymbolId == "M:C|asm1");
+            Assert.DoesNotContain(paths, p => p.Hops[0].TargetSymbolId == "M:D|asm1");
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_IncludeSourceDefaultTrue_IncludesSourceFields()
+        {
+            var snapshotId = "snap-b7-013";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1",
+                    sourceDocumentPath: "src/A.cs", sourceStartLine: 42)
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            
+            var paths = traverser.TraceImpact("M:A|asm1", ImpactDirection.Downstream);
+
+            var path = Assert.Single(paths);
+            var hop = Assert.Single(path.Hops);
+            Assert.Equal("src/A.cs", hop.SourceDocument);
+            Assert.Equal(42, hop.SourceLine);
+            store.Close();
+        }
     }
 
     public class B6ReflectionTests
@@ -2740,6 +2979,93 @@ class Foo {
             var edges = extractor.Extract();
 
             Assert.Empty(edges);
+        }
+
+        [Fact]
+        public void NameOf_UnresolvableExpression_EmitsNoEdges()
+        {
+            var source = @"
+class Bar {
+    void M() { _ = nameof(UnknownType.UnknownMember); }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-nameof-unresolved");
+            var edges = extractor.Extract();
+
+            
+            
+            Assert.Empty(edges);
+        }
+
+        [Fact]
+        public void StringLiteral_MatchingMemberName_EmitsNameCandidateEdge()
+        {
+            var source = @"
+class Foo {
+    public void Bar() { }
+}
+class Baz {
+    void M() { var s = ""Bar""; }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-stringlit-member");
+            var edges = extractor.Extract();
+
+            var nameEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionNameCandidate.ToString()).ToList();
+            var memberEdge = nameEdges.FirstOrDefault(e => e.TargetSymbolId.Contains("Bar"));
+            Assert.NotNull(memberEdge);
+            Assert.Equal("name_candidate", memberEdge.Provenance);
+        }
+
+        [Fact]
+        public void MultipleReflectionPatterns_EmitsMultipleEdges()
+        {
+            var source = @"
+class TargetType { }
+class Source {
+    void M() {
+        var t = typeof(TargetType);
+        _ = nameof(TargetType);
+    }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-multi");
+            var edges = extractor.Extract();
+
+            var typeRefEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionTypeRef.ToString()).ToList();
+            var memberRefEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionMemberRef.ToString()).ToList();
+
+            Assert.NotEmpty(typeRefEdges);
+            Assert.NotEmpty(memberRefEdges);
+            Assert.True(edges.Count >= 2);
+        }
+
+        [Fact]
+        public void ActivatorCreateInstance_EmitsReflectionTargetUnknownEdge()
+        {
+            var source = @"
+class Target { }
+class Source {
+    void M() { var x = System.Activator.CreateInstance<Target>(); }
+}";
+            
+            var systemRuntimePath = typeof(System.Activator).Assembly.Location;
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, path: "test.cs");
+            var compilation = CSharpCompilation.Create(
+                "TestAssembly",
+                new[] { syntaxTree },
+                new[] {
+                    MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                    MetadataReference.CreateFromFile(systemRuntimePath)
+                });
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-activator");
+            var edges = extractor.Extract();
+
+            
+            
+            var unknownEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionTargetUnknown.ToString()).ToList();
+            Assert.NotEmpty(unknownEdges);
+            Assert.Contains(unknownEdges, e => e.Provenance == "runtime_unknown");
         }
     }
 }

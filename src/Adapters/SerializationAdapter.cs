@@ -21,12 +21,12 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
 
-        // Walk all syntax trees looking for serialization attributes
+        
         foreach (var tree in compilation.SyntaxTrees)
         {
             var semanticModel = compilation.GetSemanticModel(tree);
 
-            // Look for property/field declarations with serialization attributes
+            
             foreach (var property in tree.GetRoot().DescendantNodes().OfType<PropertyDeclarationSyntax>())
             {
                 ProcessMemberWithSerializationAttrs(property, property.AttributeLists, semanticModel,
@@ -42,7 +42,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                 }
             }
 
-            // Look for class-level [JsonSerializable(typeof(T))]
+            
             foreach (var typeDecl in tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>())
             {
                 foreach (var attrList in typeDecl.AttributeLists)
@@ -53,7 +53,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                         if (attrName != "JsonSerializable")
                             continue;
 
-                        // Extract typeof(T) argument
+                        
                         if (attr.ArgumentList != null)
                         {
                             foreach (var arg in attr.ArgumentList.Arguments)
@@ -99,7 +99,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         List<EdgeRecord> edges,
         HashSet<(string source, string target, string kind)> seen)
     {
-        // Get the declared symbol for the property/field
+        
         ISymbol? memberSymbol = memberNode switch
         {
             PropertyDeclarationSyntax prop => semanticModel.GetDeclaredSymbol(prop),
@@ -114,7 +114,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         if (memberId == null)
             return;
 
-        // Get the type of the property/field for the References edge
+        
         ITypeSymbol? memberType = memberSymbol switch
         {
             IPropertySymbol prop => prop.Type,
@@ -128,7 +128,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             targetId = MakeSymbolId(namedType, assemblyIdentity);
         }
 
-        // Check each attribute
+        
         foreach (var attrList in attributeLists)
         {
             foreach (var attr in attrList.Attributes)
@@ -154,7 +154,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                         break;
                     case "JsonIgnore":
                     case "IgnoreDataMember":
-                        // These mark exclusion — still emit an edge with detail
+                        
                         library = attrName == "JsonIgnore" ? "System.Text.Json" : "DataContract";
                         break;
                 }
@@ -169,7 +169,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                     ["member_name"] = memberSymbol.Name
                 };
 
-                // Emit References edge from serialized member -> its type
+                
                 if (targetId != null)
                 {
                     var key = (memberId, targetId, EdgeKind.References.ToString());
@@ -186,7 +186,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
     private static string GetAttributeName(AttributeSyntax attr)
     {
         var name = attr.Name.ToString();
-        // Handle nameof-like: JsonPropertyName or JsonPropertyNameAttribute
+        
         if (name.EndsWith("Attribute", StringComparison.Ordinal))
             name = name[..^"Attribute".Length];
         return name;

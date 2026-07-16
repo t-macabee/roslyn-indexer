@@ -21,7 +21,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>();
 
-        // Walk all method bodies looking for DI registration calls
+        
         foreach (var tree in compilation.SyntaxTrees)
         {
             var semanticModel = compilation.GetSemanticModel(tree);
@@ -36,7 +36,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 if (methodName is not ("AddScoped" or "AddTransient" or "AddSingleton"))
                     continue;
 
-                // Verify it's an IServiceCollection extension by checking the containing type
+                
                 var containingType = methodSymbol.ContainingType;
                 if (containingType == null)
                     continue;
@@ -58,7 +58,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 if (!isDiExtension)
                     continue;
 
-                // Get the caller method/containing symbol for source
+                
                 var containingMethod = invocation.Ancestors()
                     .OfType<MethodDeclarationSyntax>()
                     .FirstOrDefault();
@@ -73,7 +73,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
                 if (sourceId == null)
                 {
-                    // Fall back to containing type
+                    
                     var containingTypeDecl = invocation.Ancestors()
                         .OfType<TypeDeclarationSyntax>()
                         .FirstOrDefault();
@@ -88,11 +88,11 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 if (sourceId == null)
                     continue;
 
-                // Extract type arguments from the invocation
-                // Pattern: services.AddScoped<I, T>() or services.AddScoped(typeof(I), typeof(T))
+                
+                
                 var typeArgs = new List<ITypeSymbol>();
 
-                // Check for generic type arguments: AddScoped<I, T>()
+                
                 if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
                     memberAccess.Name is GenericNameSyntax genericName)
                 {
@@ -106,7 +106,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
                 if (typeArgs.Count == 0)
                 {
-                    // Check for typeof() arguments: AddScoped(typeof(I), typeof(T))
+                    
                     foreach (var arg in invocation.ArgumentList.Arguments)
                     {
                         if (arg.Expression is TypeOfExpressionSyntax typeofExpr)
@@ -118,13 +118,12 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                     }
                 }
 
-                // Emit edges
-                // For AddScoped<I, T>(): the last type argument is the implementation
-                // For AddScoped<T>(): the only type argument is the service
-                bool isConventionCandidate = false;
+                
+                
+                
                 if (typeArgs.Count >= 2)
                 {
-                    // service = typeArgs[0], implementation = typeArgs[1]
+                    
                     var implTypeId = MakeSymbolId(typeArgs[typeArgs.Count - 1], assemblyIdentity);
                     if (implTypeId != null)
                     {
@@ -135,7 +134,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                                 sourceSymbolId: sourceId,
                                 targetSymbolId: implTypeId,
                                 kind: EdgeKind.Registers.ToString(),
-                                provenance: isConventionCandidate ? "convention_candidate" : "framework_derived",
+                                provenance: "framework_derived",
                                 snapshotId: snapshotId,
                                 extractorVersion: Version));
                         }

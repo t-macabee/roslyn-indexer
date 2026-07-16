@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Lurp.Storage;
 
 namespace Lurp
@@ -92,16 +91,10 @@ namespace Lurp
                     var newHops = new List<ImpactHop>(hopsSoFar) { newHop };
                     var newVisited = new HashSet<string>(visited) { neighborId };
 
-                    bool isLeaf = !HasRelevantEdges(neighborId, direction, allowedEdgeKinds);
-
-                    if (isLeaf)
-                    {
-                        results.Add(new ImpactPath(hops: newHops));
-                    }
-                    else
-                    {
-                        queue.Enqueue((neighborId, newHops, newVisited));
-                    }
+                    
+                    
+                    
+                    queue.Enqueue((neighborId, newHops, newVisited));
                 }
 
                 if (!anyEdgeFollowed)
@@ -116,29 +109,5 @@ namespace Lurp
             return results;
         }
 
-        private bool HasRelevantEdges(
-            string symbolId,
-            ImpactDirection direction,
-            HashSet<string>? allowedEdgeKinds)
-        {
-            try
-            {
-                var edges = direction switch
-                {
-                    ImpactDirection.Downstream => _store.GetOutgoingEdges(_snapshotId, symbolId),
-                    ImpactDirection.Upstream => _store.GetIncomingEdges(_snapshotId, symbolId),
-                    _ => new List<EdgeRecord>()
-                };
-
-                if (allowedEdgeKinds == null)
-                    return edges.Count > 0;
-
-                return edges.Any(e => allowedEdgeKinds.Contains(e.Kind));
-            }
-            catch
-            {
-                return false;
-            }
-        }
     }
 }

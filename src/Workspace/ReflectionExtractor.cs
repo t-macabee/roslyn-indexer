@@ -28,7 +28,7 @@ public sealed class ReflectionExtractor
         var edges = new List<EdgeRecord>();
         var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>();
 
-        // Collect known names from the compilation for B6.3 string matching
+        
         var knownTypeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var knownMemberNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         CollectKnownNames(_compilation.Assembly.GlobalNamespace, knownTypeNames, knownMemberNames);
@@ -38,25 +38,25 @@ public sealed class ReflectionExtractor
             var semanticModel = GetOrCreateSemanticModel(syntaxTree, semanticModelCache);
             var root = syntaxTree.GetRoot();
 
-            // B6.1 — typeof(T) expressions
+            
             edges.AddRange(ExtractTypeOfExpressions(root, semanticModel));
 
-            // B6.2 — nameof(Member) expressions
+            
             edges.AddRange(ExtractNameOfExpressions(root, semanticModel));
 
-            // B6.3 — String literals matching known names
+            
             edges.AddRange(ExtractStringLiteralCandidates(root, semanticModel, knownTypeNames, knownMemberNames));
 
-            // B6.4 — Unresolvable reflection patterns
+            
             edges.AddRange(ExtractUnknownPatterns(root, semanticModel));
         }
 
         return edges;
     }
 
-    // ────────────────────────────────────────────────────────────
-    // B6.1 — typeof(T) expressions
-    // ────────────────────────────────────────────────────────────
+    
+    
+    
 
     private List<EdgeRecord> ExtractTypeOfExpressions(SyntaxNode root, SemanticModel semanticModel)
     {
@@ -99,9 +99,9 @@ public sealed class ReflectionExtractor
         return edges;
     }
 
-    // ────────────────────────────────────────────────────────────
-    // B6.2 — nameof(Member) expressions
-    // ────────────────────────────────────────────────────────────
+    
+    
+    
 
     private List<EdgeRecord> ExtractNameOfExpressions(SyntaxNode root, SemanticModel semanticModel)
     {
@@ -124,11 +124,17 @@ public sealed class ReflectionExtractor
             if (sourceId == null)
                 continue;
 
-            // Try full resolution via SemanticModel
+            
             var symbolInfo = semanticModel.GetSymbolInfo(argument);
-            if (symbolInfo.Symbol != null && symbolInfo.Symbol.CanBeReferencedByName)
+            var resolvedSymbol = symbolInfo.Symbol;
+            if (resolvedSymbol == null && symbolInfo.CandidateSymbols.Length > 0)
             {
-                var targetId = MakeSymbolId(symbolInfo.Symbol);
+                resolvedSymbol = symbolInfo.CandidateSymbols[0];
+            }
+
+            if (resolvedSymbol != null && resolvedSymbol.CanBeReferencedByName)
+            {
+                var targetId = MakeSymbolId(resolvedSymbol);
                 if (targetId == null)
                     continue;
 
@@ -152,23 +158,9 @@ public sealed class ReflectionExtractor
             }
             else
             {
-                // Partially resolvable — emit with name_candidate provenance
-                if (argument is not IdentifierNameSyntax and not MemberAccessExpressionSyntax and not SimpleNameSyntax)
-                    continue;
-
-                var loc = GetLocationInfo(invocation.GetLocation());
-                edges.Add(new EdgeRecord(
-                    sourceSymbolId: sourceId,
-                    targetSymbolId: sourceId,
-                    kind: EdgeKind.ReflectionMemberRef.ToString(),
-                    provenance: "name_candidate",
-                    snapshotId: _snapshotId,
-                    extractorVersion: ExtractorConstants.ReflectionExtractor,
-                    sourceDocumentPath: loc.path,
-                    sourceStartLine: loc.startLine,
-                    sourceStartColumn: loc.startColumn,
-                    sourceEndLine: loc.endLine,
-                    sourceEndColumn: loc.endColumn));
+                
+                
+                continue;
             }
         }
 
@@ -177,9 +169,9 @@ public sealed class ReflectionExtractor
 
 
 
-    // ────────────────────────────────────────────────────────────
-    // B6.3 — String literals matching known names
-    // ────────────────────────────────────────────────────────────
+    
+    
+    
 
     private List<EdgeRecord> ExtractStringLiteralCandidates(
         SyntaxNode root,
@@ -199,11 +191,11 @@ public sealed class ReflectionExtractor
             if (string.IsNullOrEmpty(text) || text.Length < 3)
                 continue;
 
-            // Skip literals that are clearly not type/member references (e.g., common strings)
+            
             if (IsNoiseString(text))
                 continue;
 
-            // Check if it matches any known type or member name
+            
             string? matchedSymbolId = null;
             string? matchedName = null;
 
@@ -236,8 +228,8 @@ public sealed class ReflectionExtractor
             });
 
             var loc = GetLocationInfo(literal.GetLocation());
-            // We can't store detail_json on EdgeRecord directly, so we include it
-            // in a way that's useful. Using provenance to carry the detail.
+            
+            
             edges.Add(new EdgeRecord(
                 sourceSymbolId: sourceId,
                 targetSymbolId: matchedSymbolId,
@@ -257,7 +249,7 @@ public sealed class ReflectionExtractor
 
     private static bool IsNoiseString(string text)
     {
-        // Skip strings that are clearly not type/member references
+        
         if (text.All(char.IsDigit))
             return true;
         if (text.Contains(' ') && !text.Contains('.') && !IsPascalCase(text) && !IsCamelCase(text))
@@ -273,7 +265,7 @@ public sealed class ReflectionExtractor
 
     private string? ResolveSymbolIdByName(string name, SemanticModel semanticModel, bool isType)
     {
-        // Try to find the symbol by looking through all types in the compilation
+        
         foreach (var typeSymbol in GetNamespaceTypeMembers(_compilation.Assembly.GlobalNamespace))
         {
             if (isType)
@@ -293,9 +285,9 @@ public sealed class ReflectionExtractor
         return null;
     }
 
-    // ────────────────────────────────────────────────────────────
-    // B6.4 — Unresolvable patterns (Type.GetType, etc.)
-    // ────────────────────────────────────────────────────────────
+    
+    
+    
 
     private List<EdgeRecord> ExtractUnknownPatterns(SyntaxNode root, SemanticModel semanticModel)
     {
@@ -331,7 +323,7 @@ public sealed class ReflectionExtractor
                     break;
                 case "GetType":
                 case "GetExportedTypes":
-                    // Assembly.GetType / Assembly.GetExportedTypes
+                    
                     var receiverType = semanticModel.GetTypeInfo(memberAccess.Expression);
                     if (receiverType.Type != null &&
                         receiverType.Type.ToDisplayString() is "System.Reflection.Assembly" or "System.Type")
@@ -342,7 +334,7 @@ public sealed class ReflectionExtractor
                     }
                     break;
                 case "CreateInstance":
-                    // Activator.CreateInstance
+                    
                     var createReceiver = semanticModel.GetSymbolInfo(memberAccess.Expression);
                     if (createReceiver.Symbol is INamedTypeSymbol namedType &&
                         namedType.ToDisplayString() == "System.Activator")
@@ -374,7 +366,7 @@ public sealed class ReflectionExtractor
             var loc = GetLocationInfo(invocation.GetLocation());
             edges.Add(new EdgeRecord(
                 sourceSymbolId: sourceId,
-                targetSymbolId: sourceId, // self-reference to indicate unknown target
+                targetSymbolId: sourceId, 
                 kind: EdgeKind.ReflectionTargetUnknown.ToString(),
                 provenance: "runtime_unknown",
                 snapshotId: _snapshotId,
@@ -401,7 +393,7 @@ public sealed class ReflectionExtractor
             return true;
         }
 
-        // Also check if it's called directly on "Type" like: Type.GetType(...)
+        
         if (memberAccess.Expression is IdentifierNameSyntax id &&
             id.Identifier.Text == "Type")
         {
@@ -411,13 +403,13 @@ public sealed class ReflectionExtractor
         return false;
     }
 
-    // ────────────────────────────────────────────────────────────
-    // Helpers
-    // ────────────────────────────────────────────────────────────
+    
+    
+    
 
     private string? GetContainingMemberSymbolId(SyntaxNode node, SemanticModel semanticModel)
     {
-        // Walk up the syntax tree to find the containing member declaration
+        
         for (var current = node.Parent; current != null; current = current.Parent)
         {
             ISymbol? memberSymbol = null;
@@ -436,7 +428,7 @@ public sealed class ReflectionExtractor
             }
             else if (current is FieldDeclarationSyntax fieldDecl)
             {
-                // Field declarations can declare multiple variables
+                
                 var firstVariable = fieldDecl.Declaration.Variables.FirstOrDefault();
                 if (firstVariable != null)
                 {

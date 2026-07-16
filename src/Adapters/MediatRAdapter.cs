@@ -19,16 +19,16 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var allTypes = GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
 
-        // Check if MediatR types are referenced at all
+        
         bool hasMediatRReferences = compilation.ReferencedAssemblyNames.Any(a =>
             a.Name.Contains("MediatR", StringComparison.OrdinalIgnoreCase));
 
         if (!hasMediatRReferences)
             return edges;
 
-        // Find IRequest<T> and IRequest implementations (requests/commands/queries)
+        
         var requestTypes = new List<INamedTypeSymbol>();
-        // Find IRequestHandler<TRequest, TResponse> implementations (handlers)
+        
         var handlerTypes = new List<(INamedTypeSymbol HandlerType, INamedTypeSymbol RequestType)>();
 
         foreach (var type in allTypes)
@@ -54,7 +54,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
 
                 if (ifaceName == "INotificationHandler`1")
                 {
-                    // Also handle notifications — treated as handlers
+                    
                     var notificationTypeArg = iface.TypeArguments.FirstOrDefault();
                     if (notificationTypeArg is INamedTypeSymbol namedNotification)
                         handlerTypes.Add((type, namedNotification));
@@ -62,14 +62,14 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             }
         }
 
-        // Emit Handles edges from request -> handler's Handle method
+        
         foreach (var (handlerType, requestType) in handlerTypes)
         {
             var requestId = MakeSymbolId(requestType, assemblyIdentity);
             if (requestId == null)
                 continue;
 
-            // Find the Handle method on the handler
+            
             var handleMethod = handlerType.GetMembers()
                 .OfType<IMethodSymbol>()
                 .FirstOrDefault(m => m.Name == "Handle");

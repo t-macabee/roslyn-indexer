@@ -94,7 +94,7 @@ public sealed class MemberEdgeExtractor
 
         foreach (var (methodSymbol, methodSyntax) in EnumerateMethodDeclarations())
         {
-            var bodySyntax = methodSyntax.Body ?? (SyntaxNode?)methodSyntax.ExpressionBody;
+            var bodySyntax = GetMethodBody(methodSyntax);
             if (bodySyntax == null)
                 continue;
 
@@ -136,7 +136,7 @@ public sealed class MemberEdgeExtractor
 
         foreach (var (methodSymbol, methodSyntax) in EnumerateMethodDeclarations())
         {
-            var bodySyntax = methodSyntax.Body ?? (SyntaxNode?)methodSyntax.ExpressionBody;
+            var bodySyntax = GetMethodBody(methodSyntax);
             if (bodySyntax == null)
                 continue;
 
@@ -213,7 +213,7 @@ public sealed class MemberEdgeExtractor
 
         foreach (var (methodSymbol, methodSyntax) in EnumerateMethodDeclarations())
         {
-            var bodySyntax = methodSyntax.Body ?? (SyntaxNode?)methodSyntax.ExpressionBody;
+            var bodySyntax = GetMethodBody(methodSyntax);
             if (bodySyntax == null)
                 continue;
 
@@ -346,7 +346,7 @@ public sealed class MemberEdgeExtractor
 
                     var loc = GetMemberSourceLocation(method);
                     edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(),
-                        ExtractorConstants.ReturnsExtractor, loc));
+                        ExtractorConstants.ParameterDependenciesExtractor, loc));
                 }
             }
         }
@@ -362,7 +362,7 @@ public sealed class MemberEdgeExtractor
 
         foreach (var (methodSymbol, methodSyntax) in EnumerateMethodDeclarations())
         {
-            var bodySyntax = methodSyntax.Body ?? (SyntaxNode?)methodSyntax.ExpressionBody;
+            var bodySyntax = GetMethodBody(methodSyntax);
             if (bodySyntax == null)
                 continue;
 
@@ -432,19 +432,49 @@ public sealed class MemberEdgeExtractor
         return typeInfo.Type as INamedTypeSymbol;
     }
 
-    private IEnumerable<(IMethodSymbol, MethodDeclarationSyntax)> EnumerateMethodDeclarations()
+    private static SyntaxNode? GetMethodBody(CSharpSyntaxNode node)
+    {
+        return node switch
+        {
+            MethodDeclarationSyntax m => m.Body ?? (SyntaxNode?)m.ExpressionBody,
+            ConstructorDeclarationSyntax c => c.Body ?? (SyntaxNode?)c.ExpressionBody,
+            AccessorDeclarationSyntax a => a.Body ?? (SyntaxNode?)a.ExpressionBody,
+            _ => null
+        };
+    }
+
+    private IEnumerable<(IMethodSymbol, CSharpSyntaxNode)> EnumerateMethodDeclarations()
     {
         foreach (var typeSymbol in GetNamespaceTypeMembers(_compilation.Assembly.GlobalNamespace))
         {
             foreach (var member in typeSymbol.GetMembers())
             {
-                if (member is not IMethodSymbol method)
-                    continue;
-
-                foreach (var syntaxRef in method.DeclaringSyntaxReferences)
+                if (member is IMethodSymbol method)
                 {
-                    if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
-                        yield return (method, methodSyntax);
+                    foreach (var syntaxRef in method.DeclaringSyntaxReferences)
+                    {
+                        var syntax = syntaxRef.GetSyntax();
+                        if (syntax is MethodDeclarationSyntax methodSyntax)
+                            yield return (method, methodSyntax);
+                        else if (syntax is ConstructorDeclarationSyntax ctorSyntax)
+                            yield return (method, ctorSyntax);
+                    }
+                }
+
+                
+                if (member is IPropertySymbol property)
+                {
+                    foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
+                    {
+                        if (accessor == null)
+                            continue;
+
+                        foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
+                        {
+                            if (syntaxRef.GetSyntax() is AccessorDeclarationSyntax accessorSyntax)
+                                yield return (accessor, accessorSyntax);
+                        }
+                    }
                 }
             }
         }
@@ -490,7 +520,7 @@ public sealed class MemberEdgeExtractor
         if (string.IsNullOrEmpty(documentPath))
             return false;
 
-        // Check the explicit generated documents set first
+        
         var docId = new DocumentId(documentPath);
         if (_generatedDocuments.Contains(docId))
             return true;

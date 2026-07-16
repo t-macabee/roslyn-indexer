@@ -246,15 +246,21 @@ public sealed class PolymorphismExtractor
         foreach (var type in ns.GetTypeMembers())
         {
             types.Add(type);
-            foreach (var nested in type.GetTypeMembers())
-            {
-                types.Add(nested);
-            }
+            CollectNestedTypes(type, types);
         }
 
         foreach (var childNs in ns.GetNamespaceMembers())
         {
             CollectTypes(childNs, types);
+        }
+    }
+
+    private static void CollectNestedTypes(INamedTypeSymbol parent, List<INamedTypeSymbol> types)
+    {
+        foreach (var nested in parent.GetTypeMembers())
+        {
+            types.Add(nested);
+            CollectNestedTypes(nested, types);
         }
     }
 }

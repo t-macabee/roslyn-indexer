@@ -91,25 +91,26 @@ namespace Lurp.Storage
         List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false);
         SymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false);
 
-        // A5: edges, diagnostics, annotations
+        
         void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges);
         void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics);
         void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations);
 
-        // A5: query helpers for operational tables
+        
         List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null);
         List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null);
         List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null);
 
-        // B0: new edge queries
+        
         List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind);
         List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId);
         List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId);
 
-        // B3: semantic changes
+        
         void SaveSemanticChanges(string fromSnapshotId, string toSnapshotId, IEnumerable<SemanticChange> changes);
         List<SemanticChange> GetSemanticChanges(string fromSnapshotId, string toSnapshotId);
         List<string> GetSnapshotIds(string workspaceId);
+        List<string> GetSymbolIdsInSnapshot(string snapshotId);
     }
 }
 

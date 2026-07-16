@@ -95,6 +95,7 @@ namespace Lurp.Storage
                 new Migration_006_ExpandEdges(),
                 new Migration_007_SemanticChanges(),
                 new Migration_008_GeneratedCodeAwareness(),
+                new Migration_009_PerSnapshotSymbolData(),
             };
     }
 }
