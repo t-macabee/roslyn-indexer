@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text;
 using Microsoft.Data.Sqlite;
 using Lurp.Storage;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace Lurp.Storage.Tests;
 
@@ -25,13 +27,13 @@ public class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
-    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsFive()
+    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsSix()
     {
         var runner = new MigrationRunner(_dbPath);
 
         runner.RunMigrations();
 
-        Assert.Equal(5, runner.GetCurrentSchemaVersion());
+        Assert.Equal(6, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -42,7 +44,7 @@ public class MigrationRunnerTests : IDisposable
         runner.RunMigrations();
         runner.RunMigrations();
 
-        Assert.Equal(5, runner.GetCurrentSchemaVersion());
+        Assert.Equal(6, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -318,7 +320,7 @@ public class MigrationRunnerTests : IDisposable
         
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(5, runner.GetCurrentSchemaVersion());
+        Assert.Equal(6, runner.GetCurrentSchemaVersion());
 
         
         using (var connection = new SqliteConnection($"Data Source={_dbPath}"))
@@ -872,7 +874,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(5, runner.GetCurrentSchemaVersion());
+            Assert.Equal(6, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -893,7 +895,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(5, runner.GetCurrentSchemaVersion());
+            Assert.Equal(6, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1034,6 +1036,468 @@ public class MigrationRunnerTests : IDisposable
             store.SaveAnnotations("snap-empty", new List<AnnotationRecord>());
             Assert.Empty(store.GetAnnotations("snap-empty"));
             store.Close();
+        }
+    }
+
+    public class B0ExpansionTests : IDisposable
+    {
+        private readonly string _dbPath;
+
+        public B0ExpansionTests()
+        {
+            _dbPath = Path.Combine(Path.GetTempPath(), $"indexer_b0_{Guid.NewGuid():N}.db");
+        }
+
+        public void Dispose()
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(_dbPath))
+                File.Delete(_dbPath);
+        }
+
+        private SqliteIndexStore CreateStore()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+            return store;
+        }
+
+        /// <summary>
+        /// 5.1 — Run Migration_006 twice; verify idempotent (no crash, version stays 6).
+        /// </summary>
+        [Fact]
+        public void Migration006_RunTwice_IsIdempotent()
+        {
+            var runner = new MigrationRunner(_dbPath);
+
+            runner.RunMigrations();
+            Assert.Equal(6, runner.GetCurrentSchemaVersion());
+
+            // Second run — must not throw and version stays the same
+            runner.RunMigrations();
+            Assert.Equal(6, runner.GetCurrentSchemaVersion());
+        }
+
+        /// <summary>
+        /// 5.2 — Insert an edge with all new fields populated, read it back,
+        /// and verify every field round-trips.
+        /// </summary>
+        [Fact]
+        public void SaveAndGetEdge_WithAllNewFields_RoundTrips()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-b0-rt-001";
+
+            var edges = new List<EdgeRecord>
+            {
+                new(
+                    sourceSymbolId: "M:Ns.Foo.Bar|asm1",
+                    targetSymbolId: "M:Ns.Baz.Qux|asm1",
+                    kind: EdgeKind.Calls.ToString(),
+                    provenance: "compiler_proved",
+                    snapshotId: snapshotId,
+                    extractorVersion: "member-edges-v1",
+                    sourceDocumentPath: "src/Foo.cs",
+                    sourceStartLine: 42,
+                    sourceStartColumn: 13,
+                    sourceEndLine: 42,
+                    sourceEndColumn: 30)
+            };
+
+            store.SaveEdges(snapshotId, edges);
+
+            var loaded = store.GetEdges(snapshotId);
+            var edge = Assert.Single(loaded);
+
+            Assert.Equal("M:Ns.Foo.Bar|asm1", edge.SourceSymbolId);
+            Assert.Equal("M:Ns.Baz.Qux|asm1", edge.TargetSymbolId);
+            Assert.Equal("Calls", edge.Kind);
+            Assert.Equal("compiler_proved", edge.Provenance);
+            Assert.Equal(snapshotId, edge.SnapshotId);
+            Assert.Equal("member-edges-v1", edge.ExtractorVersion);
+            Assert.Equal("src/Foo.cs", edge.SourceDocumentPath);
+            Assert.Equal(42, edge.SourceStartLine);
+            Assert.Equal(13, edge.SourceStartColumn);
+            Assert.Equal(42, edge.SourceEndLine);
+            Assert.Equal(30, edge.SourceEndColumn);
+
+            store.Close();
+        }
+
+        /// <summary>
+        /// 5.2 (variant) — Insert with nullable fields null, verify they round-trip as null/empty.
+        /// </summary>
+        [Fact]
+        public void SaveAndGetEdge_WithNullLocationFields_RoundTrips()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-b0-rt-002";
+
+            var edges = new List<EdgeRecord>
+            {
+                new(
+                    sourceSymbolId: "T:Ns.Foo|asm1",
+                    targetSymbolId: "T:Ns.Bar|asm1",
+                    kind: EdgeKind.Inherits.ToString(),
+                    provenance: "compiler_proved",
+                    snapshotId: snapshotId,
+                    extractorVersion: "v1")
+            };
+
+            store.SaveEdges(snapshotId, edges);
+
+            var loaded = store.GetEdges(snapshotId);
+            var edge = Assert.Single(loaded);
+
+            Assert.Equal("Inherits", edge.Kind);
+            Assert.Equal("compiler_proved", edge.Provenance);
+            Assert.Equal(snapshotId, edge.SnapshotId);
+            Assert.Equal("v1", edge.ExtractorVersion);
+            Assert.Null(edge.SourceDocumentPath);
+            Assert.Null(edge.SourceStartLine);
+            Assert.Null(edge.SourceStartColumn);
+            Assert.Null(edge.SourceEndLine);
+            Assert.Null(edge.SourceEndColumn);
+
+            store.Close();
+        }
+
+        /// <summary>
+        /// 5.3 — Ensure the existing backward-compatible constructor (4 params)
+        /// still works end-to-end through SaveEdges/GetEdges.
+        /// </summary>
+        [Fact]
+        public void SaveAndGetEdge_BackwardCompatibleConstructor_StillWorks()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-b0-bc-001";
+
+            // Using the old-style 4-param constructor (matches pre-B0 callers)
+            var edges = new List<EdgeRecord>
+            {
+                new("T:Ns.Foo|asm1", "T:Ns.Bar|asm1", "Inherits", "roslyn"),
+                new("T:Ns.Foo|asm1", "T:Ns.IBaz|asm1", "Implements"),
+            };
+
+            store.SaveEdges(snapshotId, edges);
+
+            var loaded = store.GetEdges(snapshotId);
+            Assert.Equal(2, loaded.Count);
+
+            // First edge: all params provided
+            Assert.Equal("T:Ns.Foo|asm1", loaded[0].SourceSymbolId);
+            Assert.Equal("T:Ns.Bar|asm1", loaded[0].TargetSymbolId);
+            Assert.Equal("Inherits", loaded[0].Kind);
+            Assert.Equal("roslyn", loaded[0].Provenance);
+            // New fields should default to empty/null
+            Assert.Equal(snapshotId, loaded[0].SnapshotId); // from SaveEdges param
+            Assert.Equal("", loaded[0].ExtractorVersion);   // not provided → empty string
+            Assert.Null(loaded[0].SourceDocumentPath);
+
+            // Second edge: provenance omitted (defaults to empty string)
+            Assert.Equal("Implements", loaded[1].Kind);
+            Assert.Equal("", loaded[1].Provenance);
+
+            // Filter by symbolId still works
+            var filtered = store.GetEdges(snapshotId, "T:Ns.Bar|asm1");
+            Assert.Single(filtered);
+
+            store.Close();
+        }
+
+        /// <summary>
+        /// 5.2 — Verify GetEdgesByKind returns only edges of the requested kind.
+        /// </summary>
+        [Fact]
+        public void GetEdgesByKind_FiltersCorrectly()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-b0-kind-001";
+
+            var edges = new List<EdgeRecord>
+            {
+                new("T:A|asm1", "T:Base|asm1", "Inherits", "cp", snapshotId, "v1"),
+                new("T:A|asm1", "T:IFoo|asm1", "Implements", "cp", snapshotId, "v1"),
+                new("M:A.Foo|asm1", "M:B.Bar|asm1", "Calls", "cp", snapshotId, "v1"),
+            };
+            store.SaveEdges(snapshotId, edges);
+
+            var inherits = store.GetEdgesByKind(snapshotId, "Inherits");
+            Assert.Single(inherits);
+
+            var calls = store.GetEdgesByKind(snapshotId, "Calls");
+            Assert.Single(calls);
+
+            var nonExistent = store.GetEdgesByKind(snapshotId, "RoutesTo");
+            Assert.Empty(nonExistent);
+
+            store.Close();
+        }
+
+        /// <summary>
+        /// 5.2 — Verify GetIncomingEdges returns edges where symbol is the target.
+        /// </summary>
+        [Fact]
+        public void GetIncomingEdges_ReturnsEdgesTargetingSymbol()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-b0-in-001";
+
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A.Foo|asm1", "M:B.Bar|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:C.Qux|asm1", "M:B.Bar|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:B.Bar|asm1", "M:D.Other|asm1", "Calls", "cp", snapshotId, "v1"),
+            };
+            store.SaveEdges(snapshotId, edges);
+
+            var incoming = store.GetIncomingEdges(snapshotId, "M:B.Bar|asm1");
+            Assert.Equal(2, incoming.Count);
+            Assert.All(incoming, e => Assert.Equal("M:B.Bar|asm1", e.TargetSymbolId));
+
+            store.Close();
+        }
+
+        /// <summary>
+        /// 5.2 — Verify GetOutgoingEdges returns edges where symbol is the source.
+        /// </summary>
+        [Fact]
+        public void GetOutgoingEdges_ReturnsEdgesFromSymbol()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-b0-out-001";
+
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A.Foo|asm1", "M:B.Bar|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:A.Foo|asm1", "M:C.Qux|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:B.Bar|asm1", "M:D.Other|asm1", "Calls", "cp", snapshotId, "v1"),
+            };
+            store.SaveEdges(snapshotId, edges);
+
+            var outgoing = store.GetOutgoingEdges(snapshotId, "M:A.Foo|asm1");
+            Assert.Equal(2, outgoing.Count);
+            Assert.All(outgoing, e => Assert.Equal("M:A.Foo|asm1", e.SourceSymbolId));
+
+            store.Close();
+        }
+    }
+
+    public class B1MemberEdgeExtractorTests
+    {
+        private static Compilation CreateCompilation(string source, string path = "test.cs")
+        {
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, path: path);
+            return CSharpCompilation.Create(
+                "TestAssembly",
+                new[] { syntaxTree },
+                new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+        }
+
+        private static IReadOnlyDictionary<DocumentId, DocumentVersionId> CreateDocVersions(string path)
+        {
+            return new Dictionary<DocumentId, DocumentVersionId>
+            {
+                { new DocumentId(path), DocumentVersionId.Compute("test-content") }
+            };
+        }
+
+        [Fact]
+        public void Declares_ClassWithOneMethod_EmitsDeclaresEdge()
+        {
+            var source = @"
+class Foo {
+    void Bar() {}
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-decl");
+
+            var edges = extractor.ExtractAll();
+
+            var declares = edges.Where(e => e.Kind == "Declares").ToList();
+            Assert.NotEmpty(declares);
+            Assert.Contains(declares, e =>
+                e.SourceSymbolId.Contains("Foo") &&
+                e.TargetSymbolId.Contains("Bar"));
+        }
+
+        [Fact]
+        public void Calls_MethodACallsMethodB_EmitsCallsEdge()
+        {
+            var source = @"
+class Foo {
+    void A() { B(); }
+    void B() {}
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-calls");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Calls" &&
+                e.SourceSymbolId.Contains("A") &&
+                e.TargetSymbolId.Contains("B"));
+        }
+
+        [Fact]
+        public void Constructs_MethodNewFoo_EmitsConstructsEdge()
+        {
+            var source = @"
+class Foo {
+    public Foo() {}
+}
+class Bar {
+    void M() { var x = new Foo(); }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-ctor");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Constructs" &&
+                e.SourceSymbolId.Contains("M") &&
+                e.TargetSymbolId.Contains("Foo") &&
+                e.TargetSymbolId.Contains("#ctor"));
+        }
+
+        [Fact]
+        public void Overrides_DerivedOverridesVirtual_EmitsOverridesEdge()
+        {
+            var source = @"
+class Base {
+    public virtual void M() {}
+}
+class Derived : Base {
+    public override void M() {}
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-override");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Overrides" &&
+                e.SourceSymbolId.Contains("Derived") &&
+                e.TargetSymbolId.Contains("Base"));
+        }
+
+        [Fact]
+        public void ReadsWrites_MethodReadsAndWritesField_EmitsBothEdges()
+        {
+            var source = @"
+class Foo {
+    int _field;
+    void M() { _field = 1; int x = _field; }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-rw");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Writes" &&
+                e.SourceSymbolId.Contains("M") &&
+                e.TargetSymbolId.Contains("_field"));
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Reads" &&
+                e.SourceSymbolId.Contains("M") &&
+                e.TargetSymbolId.Contains("_field"));
+        }
+
+        [Fact]
+        public void Returns_MethodWithNonVoidReturn_EmitsReturnsEdge()
+        {
+            var source = @"
+class Foo {
+    string M() { return ""; }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-ret");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Returns" &&
+                e.SourceSymbolId.Contains("M") &&
+                e.TargetSymbolId.Contains("String"));
+        }
+
+        [Fact]
+        public void Throws_MethodThrowsException_EmitsThrowsEdge()
+        {
+            var source = @"
+class Foo {
+    void M() { throw new System.InvalidOperationException(); }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), "snap-throw");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Throws" &&
+                e.SourceSymbolId.Contains("M") &&
+                e.TargetSymbolId.Contains("InvalidOperationException"));
+        }
+    }
+
+    public class B2PolymorphismExtractorTests
+    {
+        private static Compilation CreateCompilation(string source, string path = "test.cs")
+        {
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, path: path);
+            return CSharpCompilation.Create(
+                "TestAssembly",
+                new[] { syntaxTree },
+                new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+        }
+
+        [Fact]
+        public void InterfaceDispatch_ClassImplementsInterface_EmitsMayDispatchTo()
+        {
+            var source = @"
+interface IFoo {
+    void Bar();
+}
+class Foo : IFoo {
+    public void Bar() {}
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new PolymorphismExtractor(compilation, "snap-poly-iface");
+
+            var edges = extractor.ExtractAll();
+
+            var dispatchEdge = Assert.Single(edges, e => e.Kind == "MayDispatchTo");
+            Assert.Equal("compiler_proved", dispatchEdge.Provenance);
+            Assert.Contains("IFoo", dispatchEdge.SourceSymbolId);
+            Assert.Contains("Foo", dispatchEdge.TargetSymbolId);
+            Assert.Contains("Bar", dispatchEdge.TargetSymbolId);
+        }
+
+        [Fact]
+        public void VirtualOverride_DerivedOverridesVirtual_EmitsMayDispatchTo()
+        {
+            var source = @"
+class Base {
+    public virtual void M() {}
+}
+class Derived : Base {
+    public override void M() {}
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new PolymorphismExtractor(compilation, "snap-poly-virt");
+
+            var edges = extractor.ExtractAll();
+
+            var dispatchEdge = Assert.Single(edges, e => e.Kind == "MayDispatchTo");
+            Assert.Equal("compiler_proved", dispatchEdge.Provenance);
+            Assert.Contains("Base", dispatchEdge.SourceSymbolId);
+            Assert.Contains("Derived", dispatchEdge.TargetSymbolId);
+            Assert.Contains("M", dispatchEdge.TargetSymbolId);
         }
     }
 }

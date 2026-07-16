@@ -60,14 +60,54 @@ namespace Lurp.Storage
         public string SourceSymbolId { get; }
         public string TargetSymbolId { get; }
         public string Kind { get; }
-        public string? Provenance { get; }
+        public string Provenance { get; }
+        public string SnapshotId { get; }
+        public string ExtractorVersion { get; }
+        public string? SourceDocumentPath { get; }
+        public int? SourceStartLine { get; }
+        public int? SourceStartColumn { get; }
+        public int? SourceEndLine { get; }
+        public int? SourceEndColumn { get; }
 
-        public EdgeRecord(string sourceSymbolId, string targetSymbolId, string kind, string? provenance = null)
+        public EdgeRecord(
+            string sourceSymbolId,
+            string targetSymbolId,
+            string kind,
+            string provenance,
+            string snapshotId,
+            string extractorVersion,
+            string? sourceDocumentPath = null,
+            int? sourceStartLine = null,
+            int? sourceStartColumn = null,
+            int? sourceEndLine = null,
+            int? sourceEndColumn = null)
         {
             SourceSymbolId = sourceSymbolId ?? throw new ArgumentNullException(nameof(sourceSymbolId));
             TargetSymbolId = targetSymbolId ?? throw new ArgumentNullException(nameof(targetSymbolId));
             Kind = kind ?? throw new ArgumentNullException(nameof(kind));
-            Provenance = provenance;
+            Provenance = provenance ?? throw new ArgumentNullException(nameof(provenance));
+            SnapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
+            ExtractorVersion = extractorVersion ?? throw new ArgumentNullException(nameof(extractorVersion));
+            SourceDocumentPath = sourceDocumentPath;
+            SourceStartLine = sourceStartLine;
+            SourceStartColumn = sourceStartColumn;
+            SourceEndLine = sourceEndLine;
+            SourceEndColumn = sourceEndColumn;
+        }
+
+        public EdgeRecord(
+            string sourceSymbolId,
+            string targetSymbolId,
+            string kind,
+            string? provenance = null)
+            : this(
+                  sourceSymbolId,
+                  targetSymbolId,
+                  kind,
+                  provenance ?? string.Empty,
+                  snapshotId: string.Empty,
+                  extractorVersion: string.Empty)
+        {
         }
     }
 

@@ -15,16 +15,19 @@ public sealed class SymbolExtractor
     private readonly IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> _documentContents;
     private readonly IReadOnlyDictionary<DocumentId, DocumentVersionId> _documentVersions;
     private readonly string _assemblyIdentity;
+    private readonly string _snapshotId;
 
     public SymbolExtractor(
         Compilation compilation,
         IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
-        IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions)
+        IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
+        string snapshotId)
     {
         _compilation = compilation ?? throw new ArgumentNullException(nameof(compilation));
         _documentContents = documentContents ?? throw new ArgumentNullException(nameof(documentContents));
         _documentVersions = documentVersions ?? throw new ArgumentNullException(nameof(documentVersions));
         _assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
+        _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
     }
 
     public List<SymbolDeclaration> ExtractAll()
@@ -65,7 +68,7 @@ public sealed class SymbolExtractor
             var targetId = MakeSymbolId(typeSymbol.BaseType);
             if (targetId != null)
             {
-                edges.Add(new EdgeRecord(sourceId, targetId, EdgeKind.Inherits.ToString(), "roslyn"));
+                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Inherits.ToString()));
             }
         }
 
@@ -75,7 +78,7 @@ public sealed class SymbolExtractor
             var targetId = MakeSymbolId(iface);
             if (targetId != null)
             {
-                edges.Add(new EdgeRecord(sourceId, targetId, EdgeKind.Implements.ToString(), "roslyn"));
+                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Implements.ToString()));
             }
         }
 
@@ -86,7 +89,7 @@ public sealed class SymbolExtractor
             var nestedId = MakeSymbolId(nested);
             if (nestedId != null)
             {
-                edges.Add(new EdgeRecord(sourceId, nestedId, EdgeKind.Contains.ToString(), "roslyn"));
+                edges.Add(MakeEdge(sourceId, nestedId, EdgeKind.Contains.ToString()));
             }
         }
 
@@ -116,7 +119,7 @@ public sealed class SymbolExtractor
             var targetId = MakeSymbolId(namedType);
             if (targetId != null && targetId != sourceSymbolId)
             {
-                edges.Add(new EdgeRecord(sourceSymbolId, targetId, EdgeKind.References.ToString(), "roslyn"));
+                edges.Add(MakeEdge(sourceSymbolId, targetId, EdgeKind.References.ToString()));
             }
         }
     }
@@ -473,6 +476,17 @@ public sealed class SymbolExtractor
         return metadata.Count > 0
             ? System.Text.Json.JsonSerializer.Serialize(metadata)
             : null;
+    }
+
+    private EdgeRecord MakeEdge(string sourceId, string targetId, string kind)
+    {
+        return new EdgeRecord(
+            sourceSymbolId: sourceId,
+            targetSymbolId: targetId,
+            kind: kind,
+            provenance: "roslyn",
+            snapshotId: _snapshotId,
+            extractorVersion: VersionConstants.ExtractorVersion);
     }
 
     private static IEnumerable<INamedTypeSymbol> GetNamespaceTypeMembers(INamespaceSymbol ns)

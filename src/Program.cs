@@ -538,22 +538,37 @@ namespace Lurp
                     var extractor = new SymbolExtractor(
                         compilation,
                         workspaceInfo.DocumentContents,
-                        workspaceInfo.Documents);
+                        workspaceInfo.Documents,
+                        snapshotIdStr);
                     var declarations = extractor.ExtractAll();
                     store.SaveDeclarations(snapshotIdStr, declarations);
                     totalDeclarations += declarations.Count;
 
-                    // Extract edges
+                    // Extract edges (type-level)
                     var edges = extractor.ExtractEdges();
                     store.SaveEdges(snapshotIdStr, edges);
                     totalEdges += edges.Count;
+
+                    // Extract member-level edges
+                    var memberEdgeExtractor = new MemberEdgeExtractor(
+                        compilation, workspaceInfo.Documents, snapshotIdStr);
+                    var memberEdges = memberEdgeExtractor.ExtractAll();
+                    store.SaveEdges(snapshotIdStr, memberEdges);
+                    totalEdges += memberEdges.Count;
+
+                    // Extract polymorphism edges (MayDispatchTo)
+                    var polyExtractor = new PolymorphismExtractor(
+                        compilation, snapshotIdStr);
+                    var polyEdges = polyExtractor.ExtractAll();
+                    store.SaveEdges(snapshotIdStr, polyEdges);
+                    totalEdges += polyEdges.Count;
 
                     // Extract diagnostics
                     var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
                     store.SaveDiagnostics(snapshotIdStr, diagnostics);
                     totalDiagnostics += diagnostics.Count;
 
-                    Console.WriteLine($"{declarations.Count} symbols, {edges.Count} edges, {diagnostics.Count} diagnostics.");
+                    Console.WriteLine($"{declarations.Count} symbols, {edges.Count + memberEdges.Count + polyEdges.Count} edges, {diagnostics.Count} diagnostics.");
                 }
 
                 Console.WriteLine();

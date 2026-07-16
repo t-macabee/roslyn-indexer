@@ -100,6 +100,11 @@ namespace Lurp.Storage
         List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null);
         List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null);
         List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null);
+
+        // B0: new edge queries
+        List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind);
+        List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId);
+        List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId);
     }
 }
 

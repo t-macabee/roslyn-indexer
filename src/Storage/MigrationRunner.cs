@@ -92,6 +92,7 @@ namespace Lurp.Storage
                 new Migration_003_SymbolTables(),
                 new Migration_004_FtsSearch(),
                 new Migration_005_A5OperationalTables(),
+                new Migration_006_ExpandEdges(),
             };
     }
 }

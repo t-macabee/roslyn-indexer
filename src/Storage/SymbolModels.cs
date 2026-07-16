@@ -5,14 +5,28 @@ namespace Lurp.Storage
 {
     public enum EdgeKind
     {
-        /// <summary>Type inherits from a base type.</summary>
         Inherits,
-        /// <summary>Type implements an interface.</summary>
         Implements,
-        /// <summary>Symbol references another type (e.g., return type, parameter type).</summary>
         References,
-        /// <summary>Type contains a nested type.</summary>
         Contains,
+        Overrides,
+        Calls,
+        Constructs,
+        Reads,
+        Writes,
+        Returns,
+        Throws,
+        Declares,
+        MayDispatchTo,
+        RoutesTo,
+        Registers,
+        Handles,
+        MapsTo,
+        TestedBy,
+        ReflectionTypeRef,
+        ReflectionMemberRef,
+        ReflectionNameCandidate,
+        ReflectionTargetUnknown,
     }
 }
 

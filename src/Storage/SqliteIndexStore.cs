@@ -783,8 +783,17 @@ namespace Lurp.Storage
                 foreach (var edge in edges)
                 {
                     command.CommandText = @"
-                        INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance)
-                        VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance);
+                        INSERT INTO edges (
+                            snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,
+                            extractor_version, source_document_path,
+                            source_start_line, source_start_column,
+                            source_end_line, source_end_column
+                        ) VALUES (
+                            @snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,
+                            @extractorVersion, @sourceDocumentPath,
+                            @sourceStartLine, @sourceStartColumn,
+                            @sourceEndLine, @sourceEndColumn
+                        );
                     ";
                     command.Parameters.Clear();
                     command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -792,6 +801,12 @@ namespace Lurp.Storage
                     command.Parameters.AddWithValue("@targetSymbolId", edge.TargetSymbolId);
                     command.Parameters.AddWithValue("@kind", edge.Kind);
                     command.Parameters.AddWithValue("@provenance", (object?)edge.Provenance ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@extractorVersion", (object?)edge.ExtractorVersion ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@sourceDocumentPath", (object?)edge.SourceDocumentPath ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@sourceStartLine", (object?)edge.SourceStartLine ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@sourceStartColumn", (object?)edge.SourceStartColumn ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@sourceEndLine", (object?)edge.SourceEndLine ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@sourceEndColumn", (object?)edge.SourceEndColumn ?? DBNull.Value);
                     command.ExecuteNonQuery();
                 }
 
@@ -814,7 +829,10 @@ namespace Lurp.Storage
             if (symbolId != null)
             {
                 command.CommandText = @"
-                    SELECT source_symbol_id, target_symbol_id, kind, provenance
+                    SELECT source_symbol_id, target_symbol_id, kind, provenance,
+                           snapshot_id, extractor_version,
+                           source_document_path, source_start_line, source_start_column,
+                           source_end_line, source_end_column
                     FROM edges
                     WHERE snapshot_id = @snapshotId
                       AND (source_symbol_id = @symbolId OR target_symbol_id = @symbolId)
@@ -825,7 +843,10 @@ namespace Lurp.Storage
             else
             {
                 command.CommandText = @"
-                    SELECT source_symbol_id, target_symbol_id, kind, provenance
+                    SELECT source_symbol_id, target_symbol_id, kind, provenance,
+                           snapshot_id, extractor_version,
+                           source_document_path, source_start_line, source_start_column,
+                           source_end_line, source_end_column
                     FROM edges
                     WHERE snapshot_id = @snapshotId
                     ORDER BY edge_id;
@@ -833,6 +854,77 @@ namespace Lurp.Storage
             }
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
+            return ReadEdgeRecords(command);
+        }
+
+        public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT source_symbol_id, target_symbol_id, kind, provenance,
+                       snapshot_id, extractor_version,
+                       source_document_path, source_start_line, source_start_column,
+                       source_end_line, source_end_column
+                FROM edges
+                WHERE snapshot_id = @snapshotId AND kind = @kind
+                ORDER BY edge_id;
+            ";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            command.Parameters.AddWithValue("@kind", kind);
+
+            return ReadEdgeRecords(command);
+        }
+
+        public List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT source_symbol_id, target_symbol_id, kind, provenance,
+                       snapshot_id, extractor_version,
+                       source_document_path, source_start_line, source_start_column,
+                       source_end_line, source_end_column
+                FROM edges
+                WHERE snapshot_id = @snapshotId AND target_symbol_id = @symbolId
+                ORDER BY edge_id;
+            ";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            command.Parameters.AddWithValue("@symbolId", symbolId);
+
+            return ReadEdgeRecords(command);
+        }
+
+        public List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT source_symbol_id, target_symbol_id, kind, provenance,
+                       snapshot_id, extractor_version,
+                       source_document_path, source_start_line, source_start_column,
+                       source_end_line, source_end_column
+                FROM edges
+                WHERE snapshot_id = @snapshotId AND source_symbol_id = @symbolId
+                ORDER BY edge_id;
+            ";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            command.Parameters.AddWithValue("@symbolId", symbolId);
+
+            return ReadEdgeRecords(command);
+        }
+
+        private static List<EdgeRecord> ReadEdgeRecords(SqliteCommand command)
+        {
             var results = new List<EdgeRecord>();
             using var reader = command.ExecuteReader();
             while (reader.Read())
@@ -841,7 +933,14 @@ namespace Lurp.Storage
                     sourceSymbolId: reader.GetString(0),
                     targetSymbolId: reader.GetString(1),
                     kind: reader.GetString(2),
-                    provenance: reader.IsDBNull(3) ? null : reader.GetString(3)));
+                    provenance: reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                    snapshotId: reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                    extractorVersion: reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                    sourceDocumentPath: reader.IsDBNull(6) ? null : reader.GetString(6),
+                    sourceStartLine: reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                    sourceStartColumn: reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                    sourceEndLine: reader.IsDBNull(9) ? null : reader.GetInt32(9),
+                    sourceEndColumn: reader.IsDBNull(10) ? null : reader.GetInt32(10)));
             }
             return results;
         }

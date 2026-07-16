@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="10.0.1" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
@@ -19,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\Storage\Lurp.Storage.csproj" />
+    <ProjectReference Include="..\src\Lurp.csproj" ExcludeAssets="build;buildTransitive" />
   </ItemGroup>
 
 </Project>
