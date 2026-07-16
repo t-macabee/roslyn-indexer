@@ -593,6 +593,23 @@ namespace Lurp
                     store.SaveEdges(snapshotIdStr, polyEdges);
                     totalEdges += polyEdges.Count;
 
+                    // B6: Extract reflection edges
+                    int reflectionEdgesCount = 0;
+                    try
+                    {
+                        var reflectionExtractor = new ReflectionExtractor(
+                            compilation, snapshotIdStr);
+                        var reflectionEdges = reflectionExtractor.Extract();
+                        store.SaveEdges(snapshotIdStr, reflectionEdges);
+                        reflectionEdgesCount = reflectionEdges.Count;
+                        totalEdges += reflectionEdgesCount;
+                        Console.WriteLine($"  Reflection extraction: {reflectionEdgesCount} edges.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"WARNING: Reflection extraction failed: {ex.Message}");
+                    }
+
                     // B5: Run framework adapters
                     int adapterEdgesCount = 0;
                     var adaptersToRun = Adapters.AdapterRegistry.GetAdapters(skipAdapters);
@@ -620,7 +637,7 @@ namespace Lurp
 
                     totalEdges += adapterEdgesCount;
 
-                    Console.WriteLine($"{declarations.Count} symbols, {edges.Count + memberEdges.Count + polyEdges.Count + adapterEdgesCount} edges, {diagnostics.Count} diagnostics.");
+                    Console.WriteLine($"{declarations.Count} symbols, {edges.Count + memberEdges.Count + polyEdges.Count + reflectionEdgesCount + adapterEdgesCount} edges, {diagnostics.Count} diagnostics.");
                 }
 
                 Console.WriteLine();

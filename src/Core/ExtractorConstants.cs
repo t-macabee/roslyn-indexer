@@ -11,4 +11,5 @@ public static class ExtractorConstants
     public const string ReadsWritesExtractor = "readswrites-v1";
     public const string ReturnsExtractor    = "returns-v1";
     public const string ThrowsExtractor     = "throws-v1";
+    public const string ReflectionExtractor  = "reflection-v1";
 }

@@ -2422,5 +2422,105 @@ public class Foo
             Assert.Equal(10, edge.SourceStartLine);
         }
     }
+
+    public class B6ReflectionTests
+    {
+        private static Compilation CreateCompilation(string source, string path = "test.cs")
+        {
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, path: path);
+            return CSharpCompilation.Create(
+                "TestAssembly",
+                new[] { syntaxTree },
+                new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+        }
+
+        [Fact]
+        public void TypeOf_EmitsReflectionTypeRefEdge()
+        {
+            var source = @"
+class Foo { }
+class Bar {
+    void M() { var t = typeof(Foo); }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-typeof");
+            var edges = extractor.Extract();
+
+            var reflectionEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionTypeRef.ToString()).ToList();
+            var edge = Assert.Single(reflectionEdges);
+            Assert.Equal("compiler_proved", edge.Provenance);
+            Assert.Contains("Foo", edge.TargetSymbolId);
+            Assert.Contains("M", edge.SourceSymbolId);
+        }
+
+        [Fact]
+        public void NameOf_EmitsReflectionMemberRefEdge()
+        {
+            var source = @"
+class Foo {
+    public void Bar() { }
+}
+class Baz {
+    void M() { _ = nameof(Foo.Bar); }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-nameof");
+            var edges = extractor.Extract();
+
+            var reflectionEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionMemberRef.ToString()).ToList();
+            var edge = Assert.Single(reflectionEdges);
+            Assert.Contains("M", edge.SourceSymbolId);
+        }
+
+        [Fact]
+        public void StringLiteral_MatchingTypeName_EmitsNameCandidateEdge()
+        {
+            var source = @"
+class SomeKnownType { }
+class Bar {
+    void M() { var s = ""SomeKnownType""; }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-stringlit");
+            var edges = extractor.Extract();
+
+            var nameEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionNameCandidate.ToString()).ToList();
+            var edge = Assert.Single(nameEdges);
+            Assert.Equal("name_candidate", edge.Provenance);
+            Assert.Contains("SomeKnownType", edge.TargetSymbolId);
+            Assert.Contains("M", edge.SourceSymbolId);
+        }
+
+        [Fact]
+        public void TypeGetType_EmitsUnknownEdge()
+        {
+            var source = @"
+class Bar {
+    void M() { var t = System.Type.GetType(""Something""); }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-unknown");
+            var edges = extractor.Extract();
+
+            var unknownEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionTargetUnknown.ToString()).ToList();
+            var edge = Assert.Single(unknownEdges);
+            Assert.Equal("runtime_unknown", edge.Provenance);
+            Assert.Contains("M", edge.SourceSymbolId);
+        }
+
+        [Fact]
+        public void NoReflection_EmitsZeroEdges()
+        {
+            var source = @"
+class Foo {
+    void M() { int x = 42; }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-none");
+            var edges = extractor.Extract();
+
+            Assert.Empty(edges);
+        }
+    }
 }
 
