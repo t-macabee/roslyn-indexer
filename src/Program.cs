@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
+using Lurp.Adapters;
 using Lurp.Storage;
 using Lurp.Workspace;
 
@@ -492,6 +493,24 @@ namespace Lurp
             // Optional JSON export
             var jsonExportPath = args.FirstOrDefault(a => a.StartsWith("--output-json="))?.Split('=', 2)[1];
 
+            // B5: --skip-adapter flags (multiple allowed)
+            var skipAdapters = args.Where(a => a.StartsWith("--skip-adapter="))
+                                   .Select(a => a.Split('=', 2)[1])
+                                   .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (skipAdapters.Count > 0)
+            {
+                var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    "ASP.NET Core", "Dependency Injection", "MediatR", "EF Core", "Serialization", "Test"
+                };
+                foreach (var name in skipAdapters)
+                {
+                    if (!knownNames.Contains(name))
+                        Console.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
+                }
+                Console.WriteLine($"Skipping adapters: {string.Join(", ", skipAdapters)}");
+            }
+
             Console.WriteLine($"Solution: {solutionPathArg}");
             Console.WriteLine($"Output DB: {dbPath}");
             if (jsonExportPath != null)
@@ -574,12 +593,34 @@ namespace Lurp
                     store.SaveEdges(snapshotIdStr, polyEdges);
                     totalEdges += polyEdges.Count;
 
+                    // B5: Run framework adapters
+                    int adapterEdgesCount = 0;
+                    var adaptersToRun = Adapters.AdapterRegistry.GetAdapters(skipAdapters);
+                    foreach (var adapter in adaptersToRun)
+                    {
+                        try
+                        {
+                            Console.Write($"  Running adapter [{adapter.Name}]... ");
+                            var adapterEdges = adapter.Extract(compilation, snapshotIdStr);
+                            store.SaveEdges(snapshotIdStr, adapterEdges);
+                            adapterEdgesCount += adapterEdges.Count;
+                            Console.WriteLine($"{adapterEdges.Count} edges.");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"ERROR: Adapter '{adapter.Name}' failed: {ex.Message}");
+                            // continue to next adapter
+                        }
+                    }
+
                     // Extract diagnostics
                     var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
                     store.SaveDiagnostics(snapshotIdStr, diagnostics);
                     totalDiagnostics += diagnostics.Count;
 
-                    Console.WriteLine($"{declarations.Count} symbols, {edges.Count + memberEdges.Count + polyEdges.Count} edges, {diagnostics.Count} diagnostics.");
+                    totalEdges += adapterEdgesCount;
+
+                    Console.WriteLine($"{declarations.Count} symbols, {edges.Count + memberEdges.Count + polyEdges.Count + adapterEdgesCount} edges, {diagnostics.Count} diagnostics.");
                 }
 
                 Console.WriteLine();
