@@ -56,6 +56,12 @@ namespace Lurp
                 return;
             }
 
+            if (args.Contains("--mode=impact"))
+            {
+                RunImpact(args);
+                return;
+            }
+
             if (args.Contains("--mode=test-migration"))
             {
                 TestMigration();
@@ -85,7 +91,7 @@ namespace Lurp
                 return;
             }
 
-            Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=status, or --mode=test-migration.");
+            Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=status, or --mode=test-migration.");
             Environment.Exit(1);
         }
 
@@ -753,6 +759,127 @@ namespace Lurp
                         created_at_utc = c.CreatedAtUtc
                     })
                 }, new JsonSerializerOptions { WriteIndented = true });
+                Console.WriteLine(json);
+            }
+            finally
+            {
+                store.Close();
+            }
+        }
+
+        private static void RunImpact(string[] args)
+        {
+            var symbolArg = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
+            if (string.IsNullOrEmpty(symbolArg))
+            {
+                Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=impact.");
+                Environment.Exit(1);
+            }
+
+            var directionArg = args.FirstOrDefault(a => a.StartsWith("--direction="))?.Split('=', 2)[1] ?? "downstream";
+            ImpactDirection direction;
+            switch (directionArg.ToLowerInvariant())
+            {
+                case "downstream":
+                    direction = ImpactDirection.Downstream;
+                    break;
+                case "upstream":
+                    direction = ImpactDirection.Upstream;
+                    break;
+                default:
+                    Console.Error.WriteLine($"ERROR: Invalid direction '{directionArg}'. Use 'upstream' or 'downstream'.");
+                    Environment.Exit(1);
+                    return;
+            }
+
+            var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
+
+            var maxDepthArg = args.FirstOrDefault(a => a.StartsWith("--max-depth="))?.Split('=', 2)[1];
+            int maxDepth = 10;
+            if (!string.IsNullOrEmpty(maxDepthArg))
+            {
+                if (!int.TryParse(maxDepthArg, out maxDepth) || maxDepth < 1)
+                {
+                    Console.Error.WriteLine("ERROR: --max-depth must be a positive integer.");
+                    Environment.Exit(1);
+                }
+            }
+
+            var kindsArg = args.FirstOrDefault(a => a.StartsWith("--kinds="))?.Split('=', 2)[1];
+            HashSet<string>? allowedKinds = null;
+            if (!string.IsNullOrEmpty(kindsArg))
+            {
+                allowedKinds = new HashSet<string>(
+                    kindsArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            }
+
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
+                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            if (string.IsNullOrEmpty(outputDirArg))
+            {
+                Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
+                Environment.Exit(1);
+            }
+
+            var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+            if (!File.Exists(dbPath))
+            {
+                Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
+                Environment.Exit(1);
+            }
+
+            var store = new SqliteIndexStore(dbPath);
+            store.Open(dbPath);
+
+            try
+            {
+                var snapshotId = snapshotArg;
+                if (string.IsNullOrEmpty(snapshotId))
+                {
+                    using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                    connection.Open();
+                    using var cmd = connection.CreateCommand();
+                    cmd.CommandText = "SELECT snapshot_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
+                    var latestSnapshot = cmd.ExecuteScalar() as string;
+                    if (latestSnapshot == null)
+                    {
+                        Console.Error.WriteLine("ERROR: No snapshots found in the database.");
+                        Environment.Exit(1);
+                    }
+                    snapshotId = latestSnapshot;
+                }
+
+                var traverser = new ImpactTraverser(store, snapshotId);
+                var paths = traverser.TraceImpact(
+                    symbolId: symbolArg,
+                    direction: direction,
+                    allowedEdgeKinds: allowedKinds,
+                    maxDepth: maxDepth,
+                    includeSource: true);
+
+                var json = JsonSerializer.Serialize(new
+                {
+                    snapshot_id = snapshotId,
+                    symbol_id = symbolArg,
+                    direction = direction == ImpactDirection.Downstream ? "downstream" : "upstream",
+                    max_depth = maxDepth,
+                    paths = paths.Select(p => new
+                    {
+                        truncated = p.Truncated,
+                        truncation_reason = p.TruncationReason,
+                        total_steps = p.TotalSteps,
+                        hops = p.Hops.Select(h => new
+                        {
+                            source_symbol_id = h.SourceSymbolId,
+                            target_symbol_id = h.TargetSymbolId,
+                            edge_kind = h.EdgeKind,
+                            provenance = h.Provenance,
+                            source_document = h.SourceDocument,
+                            source_line = h.SourceLine
+                        })
+                    })
+                }, new JsonSerializerOptions { WriteIndented = true });
+
                 Console.WriteLine(json);
             }
             finally

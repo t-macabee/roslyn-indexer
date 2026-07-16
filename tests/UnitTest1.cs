@@ -2423,6 +2423,226 @@ public class Foo
         }
     }
 
+    public class B7ImpactTraverserTests : IDisposable
+    {
+        private readonly string _dbPath;
+
+        public B7ImpactTraverserTests()
+        {
+            _dbPath = Path.Combine(Path.GetTempPath(), $"indexer_b7_{Guid.NewGuid():N}.db");
+        }
+
+        public void Dispose()
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(_dbPath))
+                File.Delete(_dbPath);
+        }
+
+        private SqliteIndexStore CreateStoreWithEdges(string snapshotId, List<EdgeRecord> edges)
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+            store.SaveEdges(snapshotId, edges);
+            return store;
+        }
+
+        [Fact]
+        public void TraceImpact_NonExistentSymbol_ReturnsEmpty()
+        {
+            var store = CreateStoreWithEdges("snap-b7-001", new List<EdgeRecord>());
+            var traverser = new ImpactTraverser(store, "snap-b7-001");
+
+            var paths = traverser.TraceImpact("nonexistent", ImpactDirection.Downstream);
+
+            Assert.Empty(paths);
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_SingleHopDownstream_ReturnsOnePath()
+        {
+            var snapshotId = "snap-b7-002";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "compiler_proved", snapshotId, "v1",
+                    sourceDocumentPath: "src/A.cs", sourceStartLine: 10)
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            var paths = traverser.TraceImpact("M:A|asm1", ImpactDirection.Downstream);
+
+            var path = Assert.Single(paths);
+            Assert.False(path.Truncated);
+            Assert.Null(path.TruncationReason);
+            Assert.Equal(1, path.TotalSteps);
+            var hop = Assert.Single(path.Hops);
+            Assert.Equal("M:A|asm1", hop.SourceSymbolId);
+            Assert.Equal("M:B|asm1", hop.TargetSymbolId);
+            Assert.Equal("Calls", hop.EdgeKind);
+            Assert.Equal("compiler_proved", hop.Provenance);
+            Assert.Equal("src/A.cs", hop.SourceDocument);
+            Assert.Equal(10, hop.SourceLine);
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_MultiHopChain_ReturnsOnePathWithTwoHops()
+        {
+            var snapshotId = "snap-b7-003";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:B|asm1", "M:C|asm1", "Calls", "cp", snapshotId, "v1"),
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            var paths = traverser.TraceImpact("M:A|asm1", ImpactDirection.Downstream);
+
+            var path = Assert.Single(paths);
+            Assert.Equal(2, path.TotalSteps);
+            Assert.False(path.Truncated);
+            Assert.Equal("M:A|asm1", path.Hops[0].SourceSymbolId);
+            Assert.Equal("M:B|asm1", path.Hops[0].TargetSymbolId);
+            Assert.Equal("M:B|asm1", path.Hops[1].SourceSymbolId);
+            Assert.Equal("M:C|asm1", path.Hops[1].TargetSymbolId);
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_Branching_ReturnsTwoPaths()
+        {
+            var snapshotId = "snap-b7-004";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:A|asm1", "M:C|asm1", "Calls", "cp", snapshotId, "v1"),
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            var paths = traverser.TraceImpact("M:A|asm1", ImpactDirection.Downstream);
+
+            Assert.Equal(2, paths.Count);
+            Assert.All(paths, p => Assert.Equal(1, p.TotalSteps));
+            Assert.Contains(paths, p => p.Hops[0].TargetSymbolId == "M:B|asm1");
+            Assert.Contains(paths, p => p.Hops[0].TargetSymbolId == "M:C|asm1");
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_Upstream_ReturnsTwoPaths()
+        {
+            var snapshotId = "snap-b7-005";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:C|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            var paths = traverser.TraceImpact("M:B|asm1", ImpactDirection.Upstream);
+
+            Assert.Equal(2, paths.Count);
+            Assert.All(paths, p => Assert.Equal(1, p.TotalSteps));
+            Assert.Contains(paths, p => p.Hops[0].SourceSymbolId == "M:C|asm1");
+            Assert.Contains(paths, p => p.Hops[0].SourceSymbolId == "M:A|asm1");
+            Assert.All(paths, p => Assert.Equal("M:B|asm1", p.Hops[0].TargetSymbolId));
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_CycleDetection_PreventsInfiniteLoop()
+        {
+            var snapshotId = "snap-b7-006";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:B|asm1", "M:A|asm1", "Calls", "cp", snapshotId, "v1"),
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            var paths = traverser.TraceImpact("M:A|asm1", ImpactDirection.Downstream, maxDepth: 5);
+
+            var path = Assert.Single(paths);
+            Assert.Equal(1, path.TotalSteps);
+            Assert.Equal("M:A|asm1", path.Hops[0].SourceSymbolId);
+            Assert.Equal("M:B|asm1", path.Hops[0].TargetSymbolId);
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_MaxDepthTruncation_ReturnsTruncatedPath()
+        {
+            var snapshotId = "snap-b7-007";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:B|asm1", "M:C|asm1", "Calls", "cp", snapshotId, "v1"),
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            var paths = traverser.TraceImpact("M:A|asm1", ImpactDirection.Downstream, maxDepth: 1);
+
+            var path = Assert.Single(paths);
+            Assert.True(path.Truncated);
+            Assert.Equal("max depth reached", path.TruncationReason);
+            Assert.Equal(1, path.TotalSteps);
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_EdgeKindFiltering_OnlyReturnsAllowedKinds()
+        {
+            var snapshotId = "snap-b7-008";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+                new("M:A|asm1", "M:C|asm1", "Reads", "cp", snapshotId, "v1"),
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            var paths = traverser.TraceImpact(
+                "M:A|asm1", ImpactDirection.Downstream,
+                allowedEdgeKinds: new HashSet<string> { "Calls" });
+
+            var path = Assert.Single(paths);
+            Assert.Equal("M:B|asm1", path.Hops[0].TargetSymbolId);
+            Assert.Equal("Calls", path.Hops[0].EdgeKind);
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_IncludeSourceFalse_SourceFieldsAreNull()
+        {
+            var snapshotId = "snap-b7-009";
+            var edges = new List<EdgeRecord>
+            {
+                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1",
+                    sourceDocumentPath: "src/A.cs", sourceStartLine: 10)
+            };
+            var store = CreateStoreWithEdges(snapshotId, edges);
+            var traverser = new ImpactTraverser(store, snapshotId);
+
+            var paths = traverser.TraceImpact("M:A|asm1", ImpactDirection.Downstream, includeSource: false);
+
+            var path = Assert.Single(paths);
+            var hop = Assert.Single(path.Hops);
+            Assert.Null(hop.SourceDocument);
+            Assert.Null(hop.SourceLine);
+            Assert.Equal("M:A|asm1", hop.SourceSymbolId);
+            Assert.Equal("M:B|asm1", hop.TargetSymbolId);
+            store.Close();
+        }
+    }
+
     public class B6ReflectionTests
     {
         private static Compilation CreateCompilation(string source, string path = "test.cs")
