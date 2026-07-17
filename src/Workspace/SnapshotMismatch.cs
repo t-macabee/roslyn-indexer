@@ -1,55 +1,28 @@
-namespace Lurp;
-
-
-
-
+﻿namespace Lurp;
 
 public enum MismatchKind
 {
-    
+
     DocumentAdded,
 
-    
     DocumentRemoved,
 
-    
     DocumentModified,
 
-    
     SdkChanged,
 
-    
     CompilerChanged,
 
-    
     TargetFrameworkChanged,
 
-    
     ProjectAdded,
 
-    
     ProjectRemoved,
 
-    
     ProjectReferenceChanged,
 
-    
     VersionChanged,
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 public sealed record SnapshotMismatch(
     MismatchKind Kind,

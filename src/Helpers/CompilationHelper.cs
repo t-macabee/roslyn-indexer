@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,9 +21,6 @@ internal static class CompilationHelper
         }
     }
 
-    
-    
-    
     public static List<DiagnosticRecord> GetDiagnostics(
         string projectName,
         Compilation compilation)

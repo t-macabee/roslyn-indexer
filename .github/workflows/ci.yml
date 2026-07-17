@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run unit tests
+        run: dotnet test tests/Lurp.Storage.Tests.csproj --no-build --configuration Release --verbosity normal
+
+      - name: Run clean-rebuild equivalence test
+        # This test loads MSBuildWorkspace and exercises the real incremental/full
+        # indexing paths end-to-end. A failure here blocks the merge.
+        run: >
+          dotnet test tests/Lurp.Storage.Tests.csproj
+          --no-build
+          --configuration Release
+          --filter "FullyQualifiedName=Lurp.Storage.Tests.CleanRebuildEquivalenceTest.IncrementalIndex_Matches_FullRebuild_AfterSingleFileChange"
+          --verbosity normal

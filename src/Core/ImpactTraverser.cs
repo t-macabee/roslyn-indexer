@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Lurp.Storage;
 
@@ -91,9 +91,6 @@ namespace Lurp
                     var newHops = new List<ImpactHop>(hopsSoFar) { newHop };
                     var newVisited = new HashSet<string>(visited) { neighborId };
 
-                    
-                    
-                    
                     queue.Enqueue((neighborId, newHops, newVisited));
                 }
 

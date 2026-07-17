@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -20,6 +20,12 @@ namespace Lurp
 
         public static void Main(string[] args)
         {
+            if (args.Contains("--help") || args.Contains("-h") || args.Contains("--mode=help") || args.Length == 0)
+            {
+                PrintHelp();
+                return;
+            }
+
             if (args.Contains("--mode=get-source"))
             {
                 RunGetSource(args);
@@ -98,6 +104,8 @@ namespace Lurp
             }
 
             Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=context, --mode=status, or --mode=test-migration.");
+            Console.Error.WriteLine("  Note: For --mode=index, use --strategy=<incremental|full> (default: full on first run, incremental on subsequent runs).");
+            Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
             Console.Error.WriteLine("  Note: 'structure' is served by --mode=context --intent=inspect.");
             Console.Error.WriteLine("  Note: 'who-references' is served by --mode=impact --direction=upstream.");
             Console.Error.WriteLine("  Note: 'discover' is served by --mode=search --type=symbol --kind=<TypeKind>.");
@@ -135,7 +143,7 @@ namespace Lurp
 
             try
             {
-                
+
                 string? source;
                 if (!string.IsNullOrEmpty(snapshotArg))
                 {
@@ -465,6 +473,55 @@ namespace Lurp
             }
         }
 
+        private static void PrintHelp()
+        {
+            Console.WriteLine("lurp — Roslyn-based code indexer");
+            Console.WriteLine();
+            Console.WriteLine("MODES");
+            Console.WriteLine("  --mode=index       Index a solution and store facts in the database.");
+            Console.WriteLine("  --mode=get-source  Retrieve source for a symbol by ID.");
+            Console.WriteLine("  --mode=get-symbol  Look up symbol metadata.");
+            Console.WriteLine("  --mode=search      Full-text search over source and symbols.");
+            Console.WriteLine("  --mode=find-symbol Resolve a symbol by file location.");
+            Console.WriteLine("  --mode=diff        Show semantic changes between two snapshots.");
+            Console.WriteLine("  --mode=impact      Trace the impact path of a changed symbol.");
+            Console.WriteLine("  --mode=context     Assemble a context capsule for a symbol.");
+            Console.WriteLine("  --mode=status      Show the current database status.");
+            Console.WriteLine();
+            Console.WriteLine("INDEXING (--mode=index)");
+            Console.WriteLine("  Required:");
+            Console.WriteLine("    --solution=<path>     Path to the .sln or .slnx file.");
+            Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
+            Console.WriteLine();
+            Console.WriteLine("  Optional:");
+            Console.WriteLine("    --strategy=<full|incremental>");
+            Console.WriteLine("        full:        Index every document from scratch.");
+            Console.WriteLine("                     This is the DEFINITION OF CORRECTNESS for the index.");
+            Console.WriteLine("                     Use it as the recovery mechanism when something looks");
+            Console.WriteLine("                     wrong: run '--strategy=full' to reset the index to a");
+            Console.WriteLine("                     known-good state.");
+            Console.WriteLine("        incremental: Only re-index changed documents; reuses facts for");
+            Console.WriteLine("                     unchanged documents from the previous snapshot.");
+            Console.WriteLine("                     Default on subsequent runs (after an initial full index).");
+            Console.WriteLine("        Default: 'full' on first run (no snapshot exists),");
+            Console.WriteLine("                 'incremental' on subsequent runs.");
+            Console.WriteLine();
+            Console.WriteLine("    --output-json=<path>  Also write the snapshot manifest as JSON.");
+            Console.WriteLine("    --skip-adapter=<name> Skip a named framework adapter.");
+            Console.WriteLine("                          Valid: ASP.NET Core, Dependency Injection,");
+            Console.WriteLine("                                 MediatR, EF Core, Serialization, Test.");
+            Console.WriteLine();
+            Console.WriteLine("SNAPSHOT LIFECYCLE");
+            Console.WriteLine("  Each indexing run (full or incremental) creates a NEW snapshot.");
+            Console.WriteLine("  The last 3 snapshots are retained; older ones are pruned automatically.");
+            Console.WriteLine("  Snapshots are never mutated — incremental creates a new snapshot,");
+            Console.WriteLine("  it does NOT modify the previous one.");
+            Console.WriteLine();
+            Console.WriteLine("ENVIRONMENT VARIABLES");
+            Console.WriteLine("  INDEXER_SOLUTION_PATH   Equivalent to --solution=.");
+            Console.WriteLine("  INDEXER_OUTPUT_DIR      Equivalent to --output-dir=.");
+        }
+
         private static async Task RunIndex(string[] args)
         {
             var solutionPathArg = args.FirstOrDefault(a => a.StartsWith("--solution="))?.Split('=', 2)[1]
@@ -486,10 +543,8 @@ namespace Lurp
             var outputDir = Path.GetFullPath(outputDirArg);
             var dbPath = Path.Combine(outputDir, "index.db");
 
-            
             var jsonExportPath = args.FirstOrDefault(a => a.StartsWith("--output-json="))?.Split('=', 2)[1];
 
-            
             var skipAdapters = args.Where(a => a.StartsWith("--skip-adapter="))
                                    .Select(a => a.Split('=', 2)[1])
                                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -507,153 +562,221 @@ namespace Lurp
                 Console.WriteLine($"Skipping adapters: {string.Join(", ", skipAdapters)}");
             }
 
+            var strategyArg = args.FirstOrDefault(a => a.StartsWith("--strategy="))?.Split('=', 2)[1];
+
             Console.WriteLine($"Solution: {solutionPathArg}");
             Console.WriteLine($"Output DB: {dbPath}");
             if (jsonExportPath != null)
                 Console.WriteLine($"JSON export: {jsonExportPath}");
             Console.WriteLine();
 
-            
             if (!MSBuildLocator.IsRegistered)
             {
                 var instances = MSBuildLocator.RegisterDefaults();
                 Console.WriteLine($"MSBuild: {instances?.MSBuildPath ?? "default"}");
             }
 
-            
             var store = new SqliteIndexStore(dbPath);
             store.Open(dbPath);
             store.RunMigrations();
             store.ValidateSchema(expectedVersion: VersionConstants.DatabaseSchemaVersion);
 
+            string strategy;
+            if (strategyArg != null)
+            {
+                strategy = strategyArg.ToLowerInvariant();
+                if (strategy != "incremental" && strategy != "full")
+                {
+                    Console.Error.WriteLine("ERROR: --strategy must be 'incremental' or 'full'.");
+                    Environment.Exit(1);
+                    return;
+                }
+            }
+            else
+            {
+                var latestSnapshotId = store.GetLatestSnapshotId();
+                if (latestSnapshotId == null)
+                {
+                    strategy = "full";
+                    Console.WriteLine("No existing snapshot found. Defaulting to --strategy=full for initial index.");
+                }
+                else
+                {
+                    strategy = "incremental";
+                }
+            }
+
+            Console.WriteLine($"Strategy: {strategy}");
+            if (strategy == "full")
+            {
+                Console.WriteLine("  (Use --strategy=full to force a full rebuild when something looks wrong.)");
+            }
+
+            var totalSw = System.Diagnostics.Stopwatch.StartNew();
+
             try
             {
-                
+
                 Console.Write("Loading solution... ");
                 using var workspace = MSBuildWorkspace.Create();
                 var solution = await workspace.OpenSolutionAsync(solutionPathArg);
                 Console.WriteLine($"done ({solution.Projects.Count()} projects).");
 
-                
                 var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPathArg))!;
                 Console.Write("Building workspace info... ");
                 var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
                 Console.WriteLine("done.");
 
-                
-                var snapshotId = SnapshotId.New();
-                var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
-                var snapshotIdStr = snapshotId.ToString();
-
-                Console.Write("Saving snapshot to database... ");
-                manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath);
-                Console.WriteLine("done.");
-
-                
-                int totalDeclarations = 0;
-                int totalEdges = 0;
-                int totalDiagnostics = 0;
-
-                await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution))
+                if (strategy == "incremental")
                 {
-                    var projectName = project.Name;
-                    Console.Write($"  [{projectName}] ");
 
-                    
-                    var extractor = new SymbolExtractor(
-                        compilation,
-                        workspaceInfo.DocumentContents,
-                        workspaceInfo.Documents,
-                        workspaceInfo.GeneratedDocuments,
-                        snapshotIdStr);
-                    var declarations = extractor.ExtractAll();
-                    store.SaveDeclarations(snapshotIdStr, declarations);
-                    totalDeclarations += declarations.Count;
-
-                    
-                    var edges = extractor.ExtractEdges();
-                    store.SaveEdges(snapshotIdStr, edges);
-                    totalEdges += edges.Count;
-
-                    
-                    var memberEdgeExtractor = new MemberEdgeExtractor(
-                        compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotIdStr);
-                    var memberEdges = memberEdgeExtractor.ExtractAll();
-                    store.SaveEdges(snapshotIdStr, memberEdges);
-                    totalEdges += memberEdges.Count;
-
-                    
-                    var polyExtractor = new PolymorphismExtractor(
-                        compilation, snapshotIdStr);
-                    var polyEdges = polyExtractor.ExtractAll();
-                    store.SaveEdges(snapshotIdStr, polyEdges);
-                    totalEdges += polyEdges.Count;
-
-                    
-                    int reflectionEdgesCount = 0;
-                    try
+                    var storageWsId = new Storage.WorkspaceId(workspaceInfo.Id.Value);
+                    var previousStorageManifest = store.LoadLatestSnapshot(storageWsId);
+                    if (previousStorageManifest == null)
                     {
-                        var reflectionExtractor = new ReflectionExtractor(
+                        Console.WriteLine("No previous snapshot found. Falling back to full index.");
+                        strategy = "full";
+                    }
+                    else
+                    {
+                        var incrementalIndexer = new IncrementalIndexer(
+                            store, gitRoot, solutionPathArg, outputDir, skipAdapters, jsonExportPath);
+                        var result = await incrementalIndexer.RunIncrementalAsync(
+                            solution, workspaceInfo, previousStorageManifest);
+                        Console.WriteLine();
+                        Console.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
+                        Console.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
+                        Console.WriteLine($"  Changed documents: {result.ChangedDocumentCount}");
+                        Console.WriteLine($"  Declarations:      {result.DeclarationsExtracted}");
+                        Console.WriteLine($"  Edges:             {result.EdgesExtracted}");
+                        Console.WriteLine($"  Diagnostics:       {result.DiagnosticsExtracted}");
+                        Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
+
+                        Console.Write("Pruning old snapshots... ");
+                        store.PruneOldSnapshots(keep: 3);
+                        Console.WriteLine("done.");
+
+                        totalSw.Stop();
+                        Console.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
+
+                        return;
+                    }
+                }
+
+                if (strategy == "full")
+                {
+                    var snapshotId = SnapshotId.New();
+                    var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
+                    var snapshotIdStr = snapshotId.ToString();
+
+                    Console.Write("Saving snapshot to database... ");
+                    manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath);
+                    Console.WriteLine("done.");
+
+                    int totalDeclarations = 0;
+                    int totalEdges = 0;
+                    int totalDiagnostics = 0;
+
+                    await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution))
+                    {
+                        var projectName = project.Name;
+                        Console.Write($"  [{projectName}] ");
+
+                        var extractor = new SymbolExtractor(
+                            compilation,
+                            workspaceInfo.DocumentContents,
+                            workspaceInfo.Documents,
+                            workspaceInfo.GeneratedDocuments,
+                            snapshotIdStr);
+                        var declarations = extractor.ExtractAll();
+                        store.SaveDeclarations(snapshotIdStr, declarations);
+                        totalDeclarations += declarations.Count;
+
+                        var edges = extractor.ExtractEdges();
+                        store.SaveEdges(snapshotIdStr, edges);
+                        totalEdges += edges.Count;
+
+                        var memberEdgeExtractor = new MemberEdgeExtractor(
+                            compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotIdStr);
+                        var memberEdges = memberEdgeExtractor.ExtractAll();
+                        store.SaveEdges(snapshotIdStr, memberEdges);
+                        totalEdges += memberEdges.Count;
+
+                        var polyExtractor = new PolymorphismExtractor(
                             compilation, snapshotIdStr);
-                        var reflectionEdges = reflectionExtractor.Extract();
-                        store.SaveEdges(snapshotIdStr, reflectionEdges);
-                        reflectionEdgesCount = reflectionEdges.Count;
-                        totalEdges += reflectionEdgesCount;
-                        Console.WriteLine($"  Reflection extraction: {reflectionEdgesCount} edges.");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.Error.WriteLine($"WARNING: Reflection extraction failed: {ex.Message}");
-                    }
+                        var polyEdges = polyExtractor.ExtractAll();
+                        store.SaveEdges(snapshotIdStr, polyEdges);
+                        totalEdges += polyEdges.Count;
 
-                    
-                    int adapterEdgesCount = 0;
-                    var adaptersToRun = Adapters.AdapterRegistry.GetAdapters(skipAdapters);
-                    foreach (var adapter in adaptersToRun)
-                    {
+                        int reflectionEdgesCount = 0;
                         try
                         {
-                            Console.Write($"  Running adapter [{adapter.Name}]... ");
-                            var adapterEdges = adapter.Extract(compilation, snapshotIdStr);
-                            store.SaveEdges(snapshotIdStr, adapterEdges);
-                            adapterEdgesCount += adapterEdges.Count;
-                            Console.WriteLine($"{adapterEdges.Count} edges.");
+                            var reflectionExtractor = new ReflectionExtractor(
+                                compilation, snapshotIdStr);
+                            var reflectionEdges = reflectionExtractor.Extract();
+                            store.SaveEdges(snapshotIdStr, reflectionEdges);
+                            reflectionEdgesCount = reflectionEdges.Count;
+                            totalEdges += reflectionEdgesCount;
+                            Console.WriteLine($"  Reflection extraction: {reflectionEdgesCount} edges.");
                         }
                         catch (Exception ex)
                         {
-                            Console.Error.WriteLine($"ERROR: Adapter '{adapter.Name}' failed: {ex.Message}");
-                            
+                            Console.Error.WriteLine($"WARNING: Reflection extraction failed: {ex.Message}");
                         }
+
+                        int adapterEdgesCount = 0;
+                        var adaptersToRun = Adapters.AdapterRegistry.GetAdapters(skipAdapters);
+                        foreach (var adapter in adaptersToRun)
+                        {
+                            try
+                            {
+                                Console.Write($"  Running adapter [{adapter.Name}]... ");
+                                var adapterEdges = adapter.Extract(compilation, snapshotIdStr);
+                                store.SaveEdges(snapshotIdStr, adapterEdges);
+                                adapterEdgesCount += adapterEdges.Count;
+                                Console.WriteLine($"{adapterEdges.Count} edges.");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.Error.WriteLine($"ERROR: Adapter '{adapter.Name}' failed: {ex.Message}");
+
+                            }
+                        }
+
+                        var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
+                        store.SaveDiagnostics(snapshotIdStr, diagnostics);
+                        totalDiagnostics += diagnostics.Count;
+
+                        totalEdges += adapterEdgesCount;
+
+                        Console.WriteLine($"{declarations.Count} symbols, {edges.Count + memberEdges.Count + polyEdges.Count + reflectionEdgesCount + adapterEdgesCount} edges, {diagnostics.Count} diagnostics.");
                     }
 
-                    
-                    var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
-                    store.SaveDiagnostics(snapshotIdStr, diagnostics);
-                    totalDiagnostics += diagnostics.Count;
-
-                    totalEdges += adapterEdgesCount;
-
-                    Console.WriteLine($"{declarations.Count} symbols, {edges.Count + memberEdges.Count + polyEdges.Count + reflectionEdgesCount + adapterEdgesCount} edges, {diagnostics.Count} diagnostics.");
-                }
-
-                Console.WriteLine();
-                Console.WriteLine($"Index complete for snapshot {snapshotIdStr}");
-                Console.WriteLine($"  Declarations: {totalDeclarations}");
-                Console.WriteLine($"  Edges:        {totalEdges}");
-                Console.WriteLine($"  Diagnostics:  {totalDiagnostics}");
-                Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
-
-                
-                var storageWsId = new Storage.WorkspaceId(manifest.WorkspaceId.Value);
-                var previousManifest = store.LoadLatestSnapshot(storageWsId);
-                if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
-                {
                     Console.WriteLine();
-                    Console.Write("Computing semantic diff from previous snapshot... ");
-                    var differ = new SemanticDiffer(store);
-                    var diffChanges = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
-                    store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
-                    Console.WriteLine($"done ({diffChanges.Count} changes).");
+                    Console.WriteLine($"Index complete for snapshot {snapshotIdStr}");
+                    Console.WriteLine($"  Declarations: {totalDeclarations}");
+                    Console.WriteLine($"  Edges:        {totalEdges}");
+                    Console.WriteLine($"  Diagnostics:  {totalDiagnostics}");
+                    Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
+
+                    var storageWsId = new Storage.WorkspaceId(manifest.WorkspaceId.Value);
+                    var previousManifest = store.LoadLatestSnapshot(storageWsId);
+                    if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
+                    {
+                        Console.WriteLine();
+                        Console.Write("Computing semantic diff from previous snapshot... ");
+                        var differ = new SemanticDiffer(store);
+                        var diffChanges = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
+                        store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
+                        Console.WriteLine($"done ({diffChanges.Count} changes).");
+                    }
+
+                    Console.Write("Pruning old snapshots... ");
+                    store.PruneOldSnapshots(keep: 3);
+                    Console.WriteLine("done.");
+
+                    totalSw.Stop();
+                    Console.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
                 }
             }
             finally

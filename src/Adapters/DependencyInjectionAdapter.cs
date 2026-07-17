@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis;
@@ -21,7 +21,6 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>();
 
-        
         foreach (var tree in compilation.SyntaxTrees)
         {
             var semanticModel = compilation.GetSemanticModel(tree);
@@ -36,7 +35,6 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 if (methodName is not ("AddScoped" or "AddTransient" or "AddSingleton"))
                     continue;
 
-                
                 var containingType = methodSymbol.ContainingType;
                 if (containingType == null)
                     continue;
@@ -58,7 +56,6 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 if (!isDiExtension)
                     continue;
 
-                
                 var containingMethod = invocation.Ancestors()
                     .OfType<MethodDeclarationSyntax>()
                     .FirstOrDefault();
@@ -73,7 +70,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
                 if (sourceId == null)
                 {
-                    
+
                     var containingTypeDecl = invocation.Ancestors()
                         .OfType<TypeDeclarationSyntax>()
                         .FirstOrDefault();
@@ -88,11 +85,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 if (sourceId == null)
                     continue;
 
-                
-                
                 var typeArgs = new List<ITypeSymbol>();
 
-                
                 if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
                     memberAccess.Name is GenericNameSyntax genericName)
                 {
@@ -106,7 +100,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
                 if (typeArgs.Count == 0)
                 {
-                    
+
                     foreach (var arg in invocation.ArgumentList.Arguments)
                     {
                         if (arg.Expression is TypeOfExpressionSyntax typeofExpr)
@@ -118,12 +112,9 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                     }
                 }
 
-                
-                
-                
                 if (typeArgs.Count >= 2)
                 {
-                    
+
                     var implTypeId = MakeSymbolId(typeArgs[typeArgs.Count - 1], assemblyIdentity);
                     if (implTypeId != null)
                     {

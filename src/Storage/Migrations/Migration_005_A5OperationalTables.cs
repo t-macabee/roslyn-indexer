@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage.Migrations
 {
@@ -10,8 +10,6 @@ namespace Lurp.Storage.Migrations
         {
             using var command = connection.CreateCommand();
 
-            
-            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS edges (
                     edge_id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +31,6 @@ namespace Lurp.Storage.Migrations
             command.CommandText = "CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_symbol_id);";
             command.ExecuteNonQuery();
 
-            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS diagnostics (
                     diagnostic_id  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,7 +54,6 @@ namespace Lurp.Storage.Migrations
             command.CommandText = "CREATE INDEX IF NOT EXISTS idx_diagnostics_project ON diagnostics(project_name);";
             command.ExecuteNonQuery();
 
-            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS annotations (
                     annotation_id  INTEGER PRIMARY KEY AUTOINCREMENT,

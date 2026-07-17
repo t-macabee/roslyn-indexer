@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis;
@@ -30,7 +30,6 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             if (dbContextId == null)
                 continue;
 
-            
             foreach (var member in type.GetMembers())
             {
                 if (member is IPropertySymbol prop &&
@@ -58,7 +57,6 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 }
             }
 
-            
             var onModelCreating = type.GetMembers()
                 .OfType<IMethodSymbol>()
                 .FirstOrDefault(m => m.Name == "OnModelCreating");
@@ -77,7 +75,6 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             }
         }
 
-        
         foreach (var type in allTypes)
         {
             foreach (var iface in type.AllInterfaces)
@@ -163,7 +160,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         List<EdgeRecord> edges,
         HashSet<(string source, string target, string kind)> seen)
     {
-        
+
         var invocations = methodSyntax.DescendantNodes().OfType<InvocationExpressionSyntax>();
 
         foreach (var invocation in invocations)
@@ -172,7 +169,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 memberAccess.Name is GenericNameSyntax genericName &&
                 genericName.Identifier.Text == "Entity")
             {
-                
+
                 if (genericName.TypeArgumentList.Arguments.Count == 1)
                 {
                     var typeInfo = semanticModel.GetTypeInfo(genericName.TypeArgumentList.Arguments[0]);
@@ -197,7 +194,6 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 }
             }
 
-            
             if (invocation.Expression is MemberAccessExpressionSyntax navAccess)
             {
                 var methodName = navAccess.Name.Identifier.Text;
@@ -206,7 +202,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     var symbolInfo = semanticModel.GetSymbolInfo(invocation);
                     if (symbolInfo.Symbol is IMethodSymbol navMethod)
                     {
-                        
+
                         if (navMethod.TypeArguments.Length > 0)
                         {
                             var navType = navMethod.TypeArguments[0];

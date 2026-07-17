@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -21,12 +21,10 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
 
-        
         foreach (var tree in compilation.SyntaxTrees)
         {
             var semanticModel = compilation.GetSemanticModel(tree);
 
-            
             foreach (var property in tree.GetRoot().DescendantNodes().OfType<PropertyDeclarationSyntax>())
             {
                 ProcessMemberWithSerializationAttrs(property, property.AttributeLists, semanticModel,
@@ -42,7 +40,6 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                 }
             }
 
-            
             foreach (var typeDecl in tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>())
             {
                 foreach (var attrList in typeDecl.AttributeLists)
@@ -53,7 +50,6 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                         if (attrName != "JsonSerializable")
                             continue;
 
-                        
                         if (attr.ArgumentList != null)
                         {
                             foreach (var arg in attr.ArgumentList.Arguments)
@@ -99,7 +95,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         List<EdgeRecord> edges,
         HashSet<(string source, string target, string kind)> seen)
     {
-        
+
         ISymbol? memberSymbol = memberNode switch
         {
             PropertyDeclarationSyntax prop => semanticModel.GetDeclaredSymbol(prop),
@@ -114,7 +110,6 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         if (memberId == null)
             return;
 
-        
         ITypeSymbol? memberType = memberSymbol switch
         {
             IPropertySymbol prop => prop.Type,
@@ -128,7 +123,6 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             targetId = MakeSymbolId(namedType, assemblyIdentity);
         }
 
-        
         foreach (var attrList in attributeLists)
         {
             foreach (var attr in attrList.Attributes)
@@ -154,7 +148,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                         break;
                     case "JsonIgnore":
                     case "IgnoreDataMember":
-                        
+
                         library = attrName == "JsonIgnore" ? "System.Text.Json" : "DataContract";
                         break;
                 }
@@ -169,7 +163,6 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                     ["member_name"] = memberSymbol.Name
                 };
 
-                
                 if (targetId != null)
                 {
                     var key = (memberId, targetId, EdgeKind.References.ToString());
@@ -186,7 +179,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
     private static string GetAttributeName(AttributeSyntax attr)
     {
         var name = attr.Name.ToString();
-        
+
         if (name.EndsWith("Attribute", StringComparison.Ordinal))
             name = name[..^"Attribute".Length];
         return name;

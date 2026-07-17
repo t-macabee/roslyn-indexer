@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis;
@@ -19,16 +19,14 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var allTypes = GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
 
-        
         bool hasMediatRReferences = compilation.ReferencedAssemblyNames.Any(a =>
             a.Name.Contains("MediatR", StringComparison.OrdinalIgnoreCase));
 
         if (!hasMediatRReferences)
             return edges;
 
-        
         var requestTypes = new List<INamedTypeSymbol>();
-        
+
         var handlerTypes = new List<(INamedTypeSymbol HandlerType, INamedTypeSymbol RequestType)>();
 
         foreach (var type in allTypes)
@@ -54,7 +52,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
 
                 if (ifaceName == "INotificationHandler`1")
                 {
-                    
+
                     var notificationTypeArg = iface.TypeArguments.FirstOrDefault();
                     if (notificationTypeArg is INamedTypeSymbol namedNotification)
                         handlerTypes.Add((type, namedNotification));
@@ -62,14 +60,12 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             }
         }
 
-        
         foreach (var (handlerType, requestType) in handlerTypes)
         {
             var requestId = MakeSymbolId(requestType, assemblyIdentity);
             if (requestId == null)
                 continue;
 
-            
             var handleMethod = handlerType.GetMembers()
                 .OfType<IMethodSymbol>()
                 .FirstOrDefault(m => m.Name == "Handle");

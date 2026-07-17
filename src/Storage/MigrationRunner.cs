@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Data.Sqlite;
@@ -55,7 +55,6 @@ namespace Lurp.Storage
         {
             using var command = connection.CreateCommand();
 
-            
             command.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_metadata';";
             var tableExists = command.ExecuteScalar();
             if (tableExists == null || tableExists == DBNull.Value)
@@ -96,6 +95,7 @@ namespace Lurp.Storage
                 new Migration_007_SemanticChanges(),
                 new Migration_008_GeneratedCodeAwareness(),
                 new Migration_009_PerSnapshotSymbolData(),
+                new Migration_010_AddLastChangedSnapshotId(),
             };
     }
 }

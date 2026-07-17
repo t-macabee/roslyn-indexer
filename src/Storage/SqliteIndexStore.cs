@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -135,12 +135,15 @@ namespace Lurp.Storage
                 foreach (var doc in manifest.Documents)
                 {
                     command.CommandText = @"
-                        INSERT INTO documents (document_id, relative_path)
-                        VALUES (@documentId, @relativePath);
+                        INSERT INTO documents (document_id, relative_path, last_changed_snapshot_id)
+                        VALUES (@documentId, @relativePath, @snapshotId)
+                        ON CONFLICT(document_id) DO UPDATE SET
+                            last_changed_snapshot_id = excluded.last_changed_snapshot_id;
                     ";
                     command.Parameters.Clear();
                     command.Parameters.AddWithValue("@documentId", doc.DocumentId);
                     command.Parameters.AddWithValue("@relativePath", doc.FilePath);
+                    command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
                     command.ExecuteNonQuery();
 
                     command.CommandText = @"
@@ -293,7 +296,6 @@ namespace Lurp.Storage
             var bytes = (byte[])result;
             return System.Text.Encoding.UTF8.GetString(bytes);
         }
-
 
         public void SaveDeclarations(string snapshotId, IEnumerable<SymbolDeclaration> declarations)
         {
@@ -499,7 +501,7 @@ namespace Lurp.Storage
 
             var parentDocCommentId = DeriveParentTypeDocCommentId(docCommentId);
             if (parentDocCommentId == null)
-                return null; 
+                return null;
 
             var parentSymbolId = $"{parentDocCommentId}|{assemblyIdentity}";
 
@@ -517,7 +519,7 @@ namespace Lurp.Storage
                 return null;
 
             int startLine = FindLineIndex(lineStarts, fullStart.Value);
-            int endLine = FindLineIndex(lineStarts, fullEnd.Value - 1); 
+            int endLine = FindLineIndex(lineStarts, fullEnd.Value - 1);
 
             int expandedStartLine = Math.Max(0, startLine - contextLines);
             int expandedEndLine = Math.Min(lineStarts.Length - 1, endLine + contextLines);
@@ -531,7 +533,6 @@ namespace Lurp.Storage
 
             return SliceToString(content, byteStart, byteEnd);
         }
-
 
         private (byte[]? Content, int? Start, int? End) GetSymbolSpanContent(
             string symbolId, string snapshotId, string startCol, string endCol, bool includeGenerated = false)
@@ -633,7 +634,6 @@ namespace Lurp.Storage
                 using var command = connection.CreateCommand();
                 command.Transaction = transaction;
 
-                
                 command.CommandText = "DELETE FROM source_fts WHERE snapshot_id = @snapshotId;";
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
                 command.ExecuteNonQuery();
@@ -641,7 +641,6 @@ namespace Lurp.Storage
                 command.CommandText = "DELETE FROM symbol_fts WHERE snapshot_id = @snapshotId;";
                 command.ExecuteNonQuery();
 
-                
                 command.CommandText = @"
                     INSERT INTO source_fts (document_path, content, snapshot_id, document_version_id)
                     SELECT d.relative_path, CAST(dv.content AS TEXT), sd.snapshot_id, dv.document_version_id
@@ -653,7 +652,6 @@ namespace Lurp.Storage
                 ";
                 command.ExecuteNonQuery();
 
-                
                 command.CommandText = @"
                     INSERT INTO symbol_fts (symbol_id, fqn, doc_comment_id, kind, snapshot_id)
                     SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind, ss.snapshot_id
@@ -680,8 +678,7 @@ namespace Lurp.Storage
             connection.Open();
 
             using var command = connection.CreateCommand();
-            
-            
+
             command.CommandText = @"
                 SELECT document_path,
                        highlight(source_fts, 1, '<mark>', '</mark>') AS snippet
@@ -774,7 +771,6 @@ namespace Lurp.Storage
 
             using var command = connection.CreateCommand();
 
-            
             command.CommandText = @"
                 SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
                        (SELECT COUNT(*) FROM declarations d WHERE d.symbol_id = s.symbol_id) AS decl_count,
@@ -799,7 +795,6 @@ namespace Lurp.Storage
             if (reader.Read())
                 return ReadSymbolInfo(reader);
 
-            
             reader.Close();
             command.Parameters.Clear();
             command.CommandText = @"
@@ -847,10 +842,6 @@ namespace Lurp.Storage
                 declarationCount: reader.GetInt32(6),
                 isPartial: reader.GetInt32(7) == 1);
         }
-
-        
-        
-        
 
         public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
         {
@@ -1029,10 +1020,6 @@ namespace Lurp.Storage
             return results;
         }
 
-        
-        
-        
-
         public void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics)
         {
             EnsureOpen();
@@ -1124,10 +1111,6 @@ namespace Lurp.Storage
             return results;
         }
 
-        
-        
-        
-
         public void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations)
         {
             EnsureOpen();
@@ -1203,9 +1186,265 @@ namespace Lurp.Storage
             return results;
         }
 
-        
-        
-        
+        public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var transaction = connection.BeginTransaction();
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = @"
+                    DELETE FROM edges
+                    WHERE snapshot_id = @snapshotId
+                      AND source_document_path IN (" + string.Join(", ", documentPaths.Select((_, i) => $"@p{i}")) + @");
+                ";
+                command.Parameters.AddWithValue("@snapshotId", snapshotId);
+                int i = 0;
+                foreach (var path in documentPaths)
+                    command.Parameters.AddWithValue($"@p{i++}", path);
+                command.ExecuteNonQuery();
+                transaction.Commit();
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var transaction = connection.BeginTransaction();
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = @"
+                    DELETE FROM declarations
+                    WHERE document_version_id IN (" + string.Join(", ", documentVersionIds.Select((_, i) => $"@p{i}")) + @");
+                ";
+                int i = 0;
+                foreach (var id in documentVersionIds)
+                    command.Parameters.AddWithValue($"@p{i++}", id);
+                command.ExecuteNonQuery();
+                transaction.Commit();
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                INSERT INTO edges (
+                    snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,
+                    extractor_version, source_document_path,
+                    source_start_line, source_start_column,
+                    source_end_line, source_end_column
+                )
+                SELECT @toSnapshotId, source_symbol_id, target_symbol_id, kind, provenance,
+                       extractor_version, source_document_path,
+                       source_start_line, source_start_column,
+                       source_end_line, source_end_column
+                FROM edges
+                WHERE snapshot_id = @fromSnapshotId;
+            ";
+            command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
+            command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+            command.ExecuteNonQuery();
+        }
+
+        public void CopySnapshotSymbols(string fromSnapshotId, string toSnapshotId)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                INSERT OR REPLACE INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
+                SELECT @toSnapshotId, symbol_id, fqn, metadata_json
+                FROM snapshot_symbols
+                WHERE snapshot_id = @fromSnapshotId;
+            ";
+            command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
+            command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+            command.ExecuteNonQuery();
+        }
+
+        public Dictionary<string, string> GetDocumentVersionIdsByPath(string snapshotId)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT d.relative_path, dv.document_version_id
+                FROM snapshot_documents sd
+                JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+                JOIN documents d ON d.document_id = dv.document_id
+                WHERE sd.snapshot_id = @snapshotId;
+            ";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            var result = new Dictionary<string, string>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                result[reader.GetString(0)] = reader.GetString(1);
+            return result;
+        }
+
+        public List<string> GetDocumentVersionIdsForDocuments(string snapshotId, IEnumerable<string> documentPaths)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT dv.document_version_id
+                FROM snapshot_documents sd
+                JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+                JOIN documents d ON d.document_id = dv.document_id
+                WHERE sd.snapshot_id = @snapshotId
+                  AND d.relative_path IN (" + string.Join(", ", documentPaths.Select((_, i) => $"@p{i}")) + @");
+            ";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            int i = 0;
+            foreach (var path in documentPaths)
+                command.Parameters.AddWithValue($"@p{i++}", path);
+            var results = new List<string>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                results.Add(reader.GetString(0));
+            return results;
+        }
+
+        public void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var transaction = connection.BeginTransaction();
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = @"
+                    DELETE FROM snapshot_symbols
+                    WHERE snapshot_id = @snapshotId
+                      AND symbol_id IN (" + string.Join(", ", symbolIds.Select((_, i) => $"@p{i}")) + @");
+                ";
+                command.Parameters.AddWithValue("@snapshotId", snapshotId);
+                int i = 0;
+                foreach (var id in symbolIds)
+                    command.Parameters.AddWithValue($"@p{i++}", id);
+                command.ExecuteNonQuery();
+                transaction.Commit();
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT DISTINCT ss.symbol_id
+                FROM snapshot_symbols ss
+                JOIN declarations d ON d.symbol_id = ss.symbol_id
+                WHERE ss.snapshot_id = @snapshotId
+                  AND d.document_version_id IN (" + string.Join(", ", documentVersionIds.Select((_, i) => $"@p{i}")) + @");
+            ";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            int i = 0;
+            foreach (var id in documentVersionIds)
+                command.Parameters.AddWithValue($"@p{i++}", id);
+            var results = new List<string>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                results.Add(reader.GetString(0));
+            return results;
+        }
+
+        public void SaveSnapshotDocuments(string snapshotId, IEnumerable<(string DocumentId, string DocumentVersionId)> entries)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var transaction = connection.BeginTransaction();
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                foreach (var (docId, versionId) in entries)
+                {
+                    command.CommandText = @"
+                        INSERT OR REPLACE INTO snapshot_documents (snapshot_id, document_version_id)
+                        VALUES (@snapshotId, @documentVersionId);
+                    ";
+                    command.Parameters.Clear();
+                    command.Parameters.AddWithValue("@snapshotId", snapshotId);
+                    command.Parameters.AddWithValue("@documentVersionId", versionId);
+                    command.ExecuteNonQuery();
+                }
+                transaction.Commit();
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public void SaveSnapshotSymbols(string snapshotId, IEnumerable<string> symbolIds)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var transaction = connection.BeginTransaction();
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                foreach (var symbolId in symbolIds)
+                {
+                    command.CommandText = @"
+                        INSERT OR REPLACE INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
+                        SELECT @snapshotId, @symbolId, fqn, metadata_json
+                        FROM snapshot_symbols
+                        WHERE symbol_id = @symbolId
+                        LIMIT 1;
+                    ";
+                    command.Parameters.Clear();
+                    command.Parameters.AddWithValue("@snapshotId", snapshotId);
+                    command.Parameters.AddWithValue("@symbolId", symbolId);
+                    command.ExecuteNonQuery();
+                }
+                transaction.Commit();
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
 
         public void SaveSemanticChanges(string fromSnapshotId, string toSnapshotId, IEnumerable<SemanticChange> changes)
         {
@@ -1395,6 +1634,116 @@ namespace Lurp.Storage
             findCmd.Parameters.AddWithValue("@byteOffset", byteOffset);
 
             return findCmd.ExecuteScalar() as string;
+        }
+
+        public void PruneOldSnapshots(int keep = 3)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+
+            using var listCmd = connection.CreateCommand();
+            listCmd.CommandText = "SELECT DISTINCT workspace_id FROM snapshots;";
+            var workspaceIds = new List<string>();
+            using (var reader = listCmd.ExecuteReader())
+            {
+                while (reader.Read())
+                    workspaceIds.Add(reader.GetString(0));
+            }
+
+            foreach (var workspaceId in workspaceIds)
+            {
+
+                using var snapCmd = connection.CreateCommand();
+                snapCmd.CommandText = @"
+                    SELECT snapshot_id FROM snapshots
+                    WHERE workspace_id = @workspaceId
+                    ORDER BY built_at_utc DESC;
+                ";
+                snapCmd.Parameters.AddWithValue("@workspaceId", workspaceId);
+
+                var snapshotIds = new List<string>();
+                using (var snapReader = snapCmd.ExecuteReader())
+                {
+                    while (snapReader.Read())
+                        snapshotIds.Add(snapReader.GetString(0));
+                }
+
+                if (snapshotIds.Count <= keep)
+                    continue;
+
+                var pruneIds = snapshotIds.Skip(keep).ToList();
+                if (pruneIds.Count == 0)
+                    continue;
+
+                using var transaction = connection.BeginTransaction();
+                try
+                {
+                    using var cmd = connection.CreateCommand();
+                    cmd.Transaction = transaction;
+
+                    foreach (var sid in pruneIds)
+                    {
+
+                        cmd.CommandText = "DELETE FROM edges WHERE snapshot_id = @sid;";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@sid", sid);
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = "DELETE FROM diagnostics WHERE snapshot_id = @sid;";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@sid", sid);
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = "DELETE FROM annotations WHERE snapshot_id = @sid;";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@sid", sid);
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = "DELETE FROM snapshot_symbols WHERE snapshot_id = @sid;";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@sid", sid);
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = "DELETE FROM projects WHERE snapshot_id = @sid;";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@sid", sid);
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = "DELETE FROM snapshot_documents WHERE snapshot_id = @sid;";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@sid", sid);
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = "DELETE FROM source_fts WHERE snapshot_id = @sid;";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@sid", sid);
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = "DELETE FROM symbol_fts WHERE snapshot_id = @sid;";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@sid", sid);
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = "DELETE FROM semantic_changes WHERE from_snapshot_id = @sid OR to_snapshot_id = @sid;";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@sid", sid);
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = "DELETE FROM snapshots WHERE snapshot_id = @sid;";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@sid", sid);
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
         }
 
         private static string? DeriveParentTypeDocCommentId(string docCommentId)

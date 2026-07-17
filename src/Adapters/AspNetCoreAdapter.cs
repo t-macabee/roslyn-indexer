@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis;
@@ -21,7 +21,6 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var allTypes = GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
 
-        
         foreach (var type in allTypes)
         {
             if (!IsController(type))
@@ -31,7 +30,6 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (controllerId == null)
                 continue;
 
-            
             foreach (var member in type.GetMembers())
             {
                 if (member is not IMethodSymbol method)
@@ -44,7 +42,6 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 if (methodId == null)
                     continue;
 
-                
                 var declaresKey = (controllerId, methodId, EdgeKind.Declares.ToString());
                 if (seen.Add(declaresKey))
                 {
@@ -52,7 +49,6 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                         snapshotId, assemblyIdentity));
                 }
 
-                
                 var routeTemplate = ExtractRouteTemplate(type, method);
                 if (routeTemplate != null)
                 {
@@ -70,7 +66,6 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                     }
                 }
 
-                
                 if (!method.ReturnsVoid && method.ReturnType != null)
                 {
                     var returnTypeId = MakeSymbolId(method.ReturnType, assemblyIdentity);
@@ -85,7 +80,6 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                     }
                 }
 
-                
                 foreach (var param in method.Parameters)
                 {
                     var hasFromServices = param.GetAttributes().Any(a =>
@@ -131,7 +125,6 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
     {
         var parts = new List<string>();
 
-        
         var classRoute = controller.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.Name is "RouteAttribute" or "Route");
 
@@ -141,7 +134,6 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             parts.Add(classTemplate.TrimStart('/'));
         }
 
-        
         var methodRoute = action.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.Name is "RouteAttribute" or "Route" or
                 "HttpGetAttribute" or "HttpGet" or

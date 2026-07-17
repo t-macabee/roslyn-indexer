@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -28,7 +28,6 @@ public sealed class ReflectionExtractor
         var edges = new List<EdgeRecord>();
         var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>();
 
-        
         var knownTypeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var knownMemberNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         CollectKnownNames(_compilation.Assembly.GlobalNamespace, knownTypeNames, knownMemberNames);
@@ -38,25 +37,17 @@ public sealed class ReflectionExtractor
             var semanticModel = GetOrCreateSemanticModel(syntaxTree, semanticModelCache);
             var root = syntaxTree.GetRoot();
 
-            
             edges.AddRange(ExtractTypeOfExpressions(root, semanticModel));
 
-            
             edges.AddRange(ExtractNameOfExpressions(root, semanticModel));
 
-            
             edges.AddRange(ExtractStringLiteralCandidates(root, semanticModel, knownTypeNames, knownMemberNames));
 
-            
             edges.AddRange(ExtractUnknownPatterns(root, semanticModel));
         }
 
         return edges;
     }
-
-    
-    
-    
 
     private List<EdgeRecord> ExtractTypeOfExpressions(SyntaxNode root, SemanticModel semanticModel)
     {
@@ -99,10 +90,6 @@ public sealed class ReflectionExtractor
         return edges;
     }
 
-    
-    
-    
-
     private List<EdgeRecord> ExtractNameOfExpressions(SyntaxNode root, SemanticModel semanticModel)
     {
         var edges = new List<EdgeRecord>();
@@ -124,7 +111,6 @@ public sealed class ReflectionExtractor
             if (sourceId == null)
                 continue;
 
-            
             var symbolInfo = semanticModel.GetSymbolInfo(argument);
             var resolvedSymbol = symbolInfo.Symbol;
             if (resolvedSymbol == null && symbolInfo.CandidateSymbols.Length > 0)
@@ -158,20 +144,13 @@ public sealed class ReflectionExtractor
             }
             else
             {
-                
-                
+
                 continue;
             }
         }
 
         return edges;
     }
-
-
-
-    
-    
-    
 
     private List<EdgeRecord> ExtractStringLiteralCandidates(
         SyntaxNode root,
@@ -191,11 +170,9 @@ public sealed class ReflectionExtractor
             if (string.IsNullOrEmpty(text) || text.Length < 3)
                 continue;
 
-            
             if (IsNoiseString(text))
                 continue;
 
-            
             string? matchedSymbolId = null;
             string? matchedName = null;
 
@@ -228,8 +205,7 @@ public sealed class ReflectionExtractor
             });
 
             var loc = GetLocationInfo(literal.GetLocation());
-            
-            
+
             edges.Add(new EdgeRecord(
                 sourceSymbolId: sourceId,
                 targetSymbolId: matchedSymbolId,
@@ -249,7 +225,7 @@ public sealed class ReflectionExtractor
 
     private static bool IsNoiseString(string text)
     {
-        
+
         if (text.All(char.IsDigit))
             return true;
         if (text.Contains(' ') && !text.Contains('.') && !IsPascalCase(text) && !IsCamelCase(text))
@@ -265,7 +241,7 @@ public sealed class ReflectionExtractor
 
     private string? ResolveSymbolIdByName(string name, SemanticModel semanticModel, bool isType)
     {
-        
+
         foreach (var typeSymbol in GetNamespaceTypeMembers(_compilation.Assembly.GlobalNamespace))
         {
             if (isType)
@@ -284,10 +260,6 @@ public sealed class ReflectionExtractor
         }
         return null;
     }
-
-    
-    
-    
 
     private List<EdgeRecord> ExtractUnknownPatterns(SyntaxNode root, SemanticModel semanticModel)
     {
@@ -323,7 +295,7 @@ public sealed class ReflectionExtractor
                     break;
                 case "GetType":
                 case "GetExportedTypes":
-                    
+
                     var receiverType = semanticModel.GetTypeInfo(memberAccess.Expression);
                     if (receiverType.Type != null &&
                         receiverType.Type.ToDisplayString() is "System.Reflection.Assembly" or "System.Type")
@@ -334,7 +306,7 @@ public sealed class ReflectionExtractor
                     }
                     break;
                 case "CreateInstance":
-                    
+
                     var createReceiver = semanticModel.GetSymbolInfo(memberAccess.Expression);
                     if (createReceiver.Symbol is INamedTypeSymbol namedType &&
                         namedType.ToDisplayString() == "System.Activator")
@@ -366,7 +338,7 @@ public sealed class ReflectionExtractor
             var loc = GetLocationInfo(invocation.GetLocation());
             edges.Add(new EdgeRecord(
                 sourceSymbolId: sourceId,
-                targetSymbolId: sourceId, 
+                targetSymbolId: sourceId,
                 kind: EdgeKind.ReflectionTargetUnknown.ToString(),
                 provenance: "runtime_unknown",
                 snapshotId: _snapshotId,
@@ -393,7 +365,6 @@ public sealed class ReflectionExtractor
             return true;
         }
 
-        
         if (memberAccess.Expression is IdentifierNameSyntax id &&
             id.Identifier.Text == "Type")
         {
@@ -403,13 +374,9 @@ public sealed class ReflectionExtractor
         return false;
     }
 
-    
-    
-    
-
     private string? GetContainingMemberSymbolId(SyntaxNode node, SemanticModel semanticModel)
     {
-        
+
         for (var current = node.Parent; current != null; current = current.Parent)
         {
             ISymbol? memberSymbol = null;
@@ -428,7 +395,7 @@ public sealed class ReflectionExtractor
             }
             else if (current is FieldDeclarationSyntax fieldDecl)
             {
-                
+
                 var firstVariable = fieldDecl.Declaration.Variables.FirstOrDefault();
                 if (firstVariable != null)
                 {

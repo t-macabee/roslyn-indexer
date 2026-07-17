@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -55,13 +55,13 @@ public class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
-    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsSix()
+    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsTen()
     {
         var runner = new MigrationRunner(_dbPath);
 
         runner.RunMigrations();
 
-        Assert.Equal(9, runner.GetCurrentSchemaVersion());
+        Assert.Equal(10, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class MigrationRunnerTests : IDisposable
         runner.RunMigrations();
         runner.RunMigrations();
 
-        Assert.Equal(9, runner.GetCurrentSchemaVersion());
+        Assert.Equal(10, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -137,7 +137,6 @@ public class MigrationRunnerTests : IDisposable
         Assert.Equal(createdAt, loaded.CreatedAtUtc);
         Assert.Equal(2, loaded.Documents.Count);
 
-        
         var doc1 = loaded.Documents[0];
         Assert.Equal("doc1", doc1.DocumentId);
         Assert.Equal("src/Program.cs", doc1.FilePath);
@@ -194,7 +193,6 @@ public class MigrationRunnerTests : IDisposable
 
         store.SaveSnapshot(original);
 
-        
         var source = store.GetSource("src/Foo.cs", snapshotId);
         Assert.NotNull(source);
         Assert.Equal("using System;\n\nclass Foo { }\n", source);
@@ -233,7 +231,7 @@ public class MigrationRunnerTests : IDisposable
     [Fact]
     public void GetSource_NoRoslyn_ReturnsContentFromSqliteOnly()
     {
-        
+
         var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
@@ -260,10 +258,9 @@ public class MigrationRunnerTests : IDisposable
         store.SaveSnapshot(original);
         store.Close();
 
-        
         var reopened = new SqliteIndexStore(_dbPath);
         reopened.Open(_dbPath);
-        
+
         var source = reopened.GetSource("src/app.cs", snapshotId);
         Assert.NotNull(source);
         Assert.Equal("console.log('hello');", source);
@@ -274,7 +271,7 @@ public class MigrationRunnerTests : IDisposable
     [Fact]
     public void LineStarts_FirstOffsetIsZero()
     {
-        
+
         var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
@@ -300,7 +297,6 @@ public class MigrationRunnerTests : IDisposable
         );
         store.SaveSnapshot(original);
 
-        
         var loaded = store.LoadLatestSnapshot(new Storage.WorkspaceId(workspaceId));
         Assert.NotNull(loaded);
         var doc = loaded!.Documents[0];
@@ -329,13 +325,12 @@ public class MigrationRunnerTests : IDisposable
             createdAtUtc: DateTime.UtcNow,
             documents: new System.Collections.Generic.List<DocumentVersion>
             {
-                
+
                 new("doc1", "src/empty.cs", "hash1", "utf-8", "", DateTime.MinValue),
             }
         );
         store.SaveSnapshot(original);
 
-        
         var source = store.GetSource("src/empty.cs", snapshotId);
         Assert.Null(source);
 
@@ -345,12 +340,11 @@ public class MigrationRunnerTests : IDisposable
     [Fact]
     public void Migration002_AppliedOnExistingMigration001_Database()
     {
-        
+
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(9, runner.GetCurrentSchemaVersion());
+        Assert.Equal(10, runner.GetCurrentSchemaVersion());
 
-        
         using (var connection = new SqliteConnection($"Data Source={_dbPath}"))
         {
             connection.Open();
@@ -367,6 +361,25 @@ public class MigrationRunnerTests : IDisposable
         }
     }
 
+    [Fact]
+    public void Migration010_AddsLastChangedSnapshotIdColumn()
+    {
+        var runner = new MigrationRunner(_dbPath);
+        runner.RunMigrations();
+
+        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        connection.Open();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "PRAGMA table_info(documents);";
+        using var reader = cmd.ExecuteReader();
+        bool found = false;
+        while (reader.Read())
+        {
+            if (reader.GetString(1) == "last_changed_snapshot_id")
+                found = true;
+        }
+        Assert.True(found, "last_changed_snapshot_id column should exist after migration 010");
+    }
 
     public class SymbolStoreTests : IDisposable
     {
@@ -393,7 +406,6 @@ public class MigrationRunnerTests : IDisposable
         }
 
         private static byte[] StringToBytes(string text) => Encoding.UTF8.GetBytes(text);
-
 
         private static void CreateSnapshotWithDocument(
             SqliteIndexStore store, string snapshotId)
@@ -423,9 +435,6 @@ public class MigrationRunnerTests : IDisposable
                 });
             store.SaveSnapshot(manifest);
         }
-
-
-
 
         [Fact]
         public void SaveDeclarations_And_GetSymbolInfo_MetadataOnly()
@@ -462,7 +471,6 @@ public class MigrationRunnerTests : IDisposable
             var store = CreateStore();
             var snapshotId = "snap-sym-002";
             CreateSnapshotWithDocument(store, snapshotId);
-
 
             var decl = MakeDecl(
                 symbolId: "M:TestNs.Foo.Bar|assembly1",
@@ -837,7 +845,6 @@ public class MigrationRunnerTests : IDisposable
 
             store.SaveDeclarations(snapshotId, new[] { decl });
 
-            
             var info = store.ResolveSymbolByFqn("MyNs.My", snapshotId);
             Assert.NotNull(info);
             Assert.Equal("MyNs.MyClass", info!.FullyQualifiedName);
@@ -879,7 +886,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(9, runner.GetCurrentSchemaVersion());
+            Assert.Equal(10, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -900,7 +907,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(9, runner.GetCurrentSchemaVersion());
+            Assert.Equal(10, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -959,7 +966,6 @@ public class MigrationRunnerTests : IDisposable
             Assert.Equal("T:Ns.Bar|asm1", loaded[0].TargetSymbolId);
             Assert.Equal("Inherits", loaded[0].Kind);
 
-            
             var filtered = store.GetEdges(snapshotId, "T:Ns.Bar|asm1");
             Assert.Single(filtered);
 
@@ -1068,26 +1074,18 @@ public class MigrationRunnerTests : IDisposable
             return store;
         }
 
-        
-        
-        
         [Fact]
         public void Migration006_RunTwice_IsIdempotent()
         {
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(9, runner.GetCurrentSchemaVersion());
+            Assert.Equal(10, runner.GetCurrentSchemaVersion());
 
-            
             runner.RunMigrations();
-            Assert.Equal(9, runner.GetCurrentSchemaVersion());
+            Assert.Equal(10, runner.GetCurrentSchemaVersion());
         }
 
-        
-        
-        
-        
         [Fact]
         public void SaveAndGetEdge_WithAllNewFields_RoundTrips()
         {
@@ -1130,9 +1128,6 @@ public class MigrationRunnerTests : IDisposable
             store.Close();
         }
 
-        
-        
-        
         [Fact]
         public void SaveAndGetEdge_WithNullLocationFields_RoundTrips()
         {
@@ -1168,17 +1163,12 @@ public class MigrationRunnerTests : IDisposable
             store.Close();
         }
 
-        
-        
-        
-        
         [Fact]
         public void SaveAndGetEdge_BackwardCompatibleConstructor_StillWorks()
         {
             var store = CreateStore();
             var snapshotId = "snap-b0-bc-001";
 
-            
             var edges = new List<EdgeRecord>
             {
                 new("T:Ns.Foo|asm1", "T:Ns.Bar|asm1", "Inherits", "roslyn"),
@@ -1190,30 +1180,24 @@ public class MigrationRunnerTests : IDisposable
             var loaded = store.GetEdges(snapshotId);
             Assert.Equal(2, loaded.Count);
 
-            
             Assert.Equal("T:Ns.Foo|asm1", loaded[0].SourceSymbolId);
             Assert.Equal("T:Ns.Bar|asm1", loaded[0].TargetSymbolId);
             Assert.Equal("Inherits", loaded[0].Kind);
             Assert.Equal("roslyn", loaded[0].Provenance);
-            
-            Assert.Equal(snapshotId, loaded[0].SnapshotId); 
-            Assert.Equal("", loaded[0].ExtractorVersion);   
+
+            Assert.Equal(snapshotId, loaded[0].SnapshotId);
+            Assert.Equal("", loaded[0].ExtractorVersion);
             Assert.Null(loaded[0].SourceDocumentPath);
 
-            
             Assert.Equal("Implements", loaded[1].Kind);
             Assert.Equal("", loaded[1].Provenance);
 
-            
             var filtered = store.GetEdges(snapshotId, "T:Ns.Bar|asm1");
             Assert.Single(filtered);
 
             store.Close();
         }
 
-        
-        
-        
         [Fact]
         public void GetEdgesByKind_FiltersCorrectly()
         {
@@ -1240,9 +1224,6 @@ public class MigrationRunnerTests : IDisposable
             store.Close();
         }
 
-        
-        
-        
         [Fact]
         public void GetIncomingEdges_ReturnsEdgesTargetingSymbol()
         {
@@ -1264,9 +1245,6 @@ public class MigrationRunnerTests : IDisposable
             store.Close();
         }
 
-        
-        
-        
         [Fact]
         public void GetOutgoingEdges_ReturnsEdgesFromSymbol()
         {
@@ -1558,10 +1536,10 @@ class Derived : Base {
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(9, runner.GetCurrentSchemaVersion());
+            Assert.Equal(10, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(9, runner.GetCurrentSchemaVersion());
+            Assert.Equal(10, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1953,23 +1931,17 @@ class Derived : Base {
             store.SaveSnapshot(manifest);
         }
 
-        
-        
-        
-        
         [Fact]
         public void Migration008_RunTwice_IsIdempotent()
         {
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(9, runner.GetCurrentSchemaVersion());
+            Assert.Equal(10, runner.GetCurrentSchemaVersion());
 
-            
             runner.RunMigrations();
-            Assert.Equal(9, runner.GetCurrentSchemaVersion());
+            Assert.Equal(10, runner.GetCurrentSchemaVersion());
 
-            
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
             using var cmd = connection.CreateCommand();
@@ -1987,11 +1959,6 @@ class Derived : Base {
             Assert.True(hasGeneratorIdentity, "generator_identity column should exist after migration 008");
         }
 
-        
-        
-        
-        
-        
         [Fact]
         public void SaveDeclaration_WithIsGenerated_RoundTrips()
         {
@@ -2000,7 +1967,6 @@ class Derived : Base {
             CreateSnapshotWithDocument(store, snapshotId, "src/Generated.cs",
                 "// <auto-generated>\nclass GeneratedClass { }");
 
-            
             var decl = new SymbolDeclaration(
                 symbolId: new SymbolId("T:GeneratedClass", "asm1", "GeneratedClass"),
                 kind: SymbolKind.Type,
@@ -2018,19 +1984,14 @@ class Derived : Base {
             Assert.NotNull(info);
             Assert.Equal("T:GeneratedClass", info!.SymbolId.DocCommentId);
 
-            
             var sourceWithout = store.GetSymbolSource("T:GeneratedClass|asm1", snapshotId, ViewKind.Declaration);
-            Assert.Null(sourceWithout); 
+            Assert.Null(sourceWithout);
 
             var sourceWith = store.GetSymbolSource("T:GeneratedClass|asm1", snapshotId, ViewKind.Declaration, includeGenerated: true);
             Assert.NotNull(sourceWith);
             Assert.Contains("GeneratedClass", sourceWith!);
         }
 
-        
-        
-        
-        
         [Fact]
         public void GetSymbolSource_ExcludesGeneratedByDefault()
         {
@@ -2052,32 +2013,22 @@ class Derived : Base {
 
             store.SaveDeclarations(snapshotId, new[] { decl });
 
-            
             var without = store.GetSymbolSource("T:Gen|asm1", snapshotId, ViewKind.Declaration);
             Assert.Null(without);
 
-            
             var with = store.GetSymbolSource("T:Gen|asm1", snapshotId, ViewKind.Declaration, includeGenerated: true);
             Assert.NotNull(with);
         }
 
-        
-        
-        
-        
         [Fact]
         public void Search_ExcludesGeneratedByDefault()
         {
             var store = CreateStore();
             var snapshotId = "snap-b4-search-001";
 
-            
             CreateSnapshotWithDocument(store, snapshotId, "src/Normal.cs",
                 "class NormalClass { }");
 
-            
-            
-            
             var normalDecl = new SymbolDeclaration(
                 symbolId: new SymbolId("T:NormalClass", "asm1", "NormalClass"),
                 kind: SymbolKind.Type,
@@ -2091,7 +2042,7 @@ class Derived : Base {
             var generatedDecl = new SymbolDeclaration(
                 symbolId: new SymbolId("T:GenClass", "asm1", "GenClass"),
                 kind: SymbolKind.Type,
-                documentVersionId: "doc-src/Normal.cs", 
+                documentVersionId: "doc-src/Normal.cs",
                 fullSpan: new DeclarationSpan(0, 20),
                 signatureSpan: new DeclarationSpan(0, 15),
                 bodySpan: new DeclarationSpan(16, 19),
@@ -2102,37 +2053,28 @@ class Derived : Base {
             store.SaveDeclarations(snapshotId, new[] { normalDecl, generatedDecl });
             store.BuildSearchIndex(snapshotId);
 
-            
             var normalResults = store.SearchSymbols("NormalClass", snapshotId);
             Assert.NotEmpty(normalResults);
 
-            
             var withoutGen = store.SearchSymbols("GenClass", snapshotId);
             Assert.Empty(withoutGen);
 
-            
             var withGen = store.SearchSymbols("GenClass", snapshotId, includeGenerated: true);
             Assert.NotEmpty(withGen);
         }
 
-        
-        
-        
-        
         [Fact]
         public void CrossGeneratedProvenanceMarker_AppendedForGeneratedEdges()
         {
-            
+
             var compilation = CreateCompilation("class A { string M() => \"\"; }");
             var docVersions = CreateDocVersions("test.cs");
 
-            
             var generatedDocs = new HashSet<DocumentId> { new DocumentId("test.cs") };
             var extractor = new MemberEdgeExtractor(compilation, docVersions, generatedDocs, "snap-b4-provenance");
 
             var edges = extractor.ExtractAll();
 
-            
             var returns = edges.Where(e => e.Kind == "Returns").ToList();
             Assert.NotEmpty(returns);
             foreach (var edge in returns)
@@ -2189,12 +2131,6 @@ class Derived : Base {
                 references);
         }
 
-        
-
-        
-        
-        
-        
         [Fact]
         public void AspNetCore_RouteAttribute_EmitsRoutesToEdge()
         {
@@ -2208,19 +2144,15 @@ public class UsersController : ControllerBase
     public IActionResult GetUser(int id) => Ok();
 }
 ";
-            
+
             var compilation = CreateCompilation(source);
             var adapter = new AspNetCoreAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-aspnet-001");
 
             Assert.NotNull(edges);
-            
-            
+
         }
 
-        
-        
-        
         [Fact]
         public void AspNetCore_HttpPostAttribute_EmitsRoutesToEdge()
         {
@@ -2239,12 +2171,9 @@ public class OrdersController : ControllerBase
             var edges = adapter.Extract(compilation, "snap-b5-aspnet-003");
 
             Assert.NotNull(edges);
-            
+
         }
 
-        
-        
-        
         [Fact]
         public void AspNetCore_NoController_EmitsZeroEdges()
         {
@@ -2261,11 +2190,6 @@ public class PlainClass
             Assert.Empty(edges);
         }
 
-        
-
-        
-        
-        
         [Fact]
         public void DI_AddScoped_EmitsRegistersEdge()
         {
@@ -2288,12 +2212,9 @@ public class Startup
             var edges = adapter.Extract(compilation, "snap-b5-di-001");
 
             Assert.NotNull(edges);
-            
+
         }
 
-        
-        
-        
         [Fact]
         public void DI_AddTransient_EmitsRegistersEdge()
         {
@@ -2318,9 +2239,6 @@ public class Startup
             Assert.NotNull(edges);
         }
 
-        
-        
-        
         [Fact]
         public void DI_AddSingleton_EmitsRegistersEdge()
         {
@@ -2345,11 +2263,6 @@ public class Startup
             Assert.NotNull(edges);
         }
 
-        
-
-        
-        
-        
         [Fact]
         public void MediatR_INotificationHandler_EmitsHandlesEdge()
         {
@@ -2367,13 +2280,9 @@ public class UserCreatedHandler : INotificationHandler<UserCreatedEvent>
             var adapter = new MediatRAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-mediatr-003");
 
-            
             Assert.Empty(edges);
         }
 
-        
-        
-        
         [Fact]
         public void MediatR_RequestHandler_EmitsHandlesEdge()
         {
@@ -2392,13 +2301,9 @@ public class GetUserHandler : IRequestHandler<GetUserQuery, User>
             var adapter = new MediatRAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-mediatr-001");
 
-            
             Assert.Empty(edges);
         }
 
-        
-        
-        
         [Fact]
         public void MediatR_NoReferences_EmitsZeroEdges()
         {
@@ -2412,11 +2317,6 @@ public class Plain { }
             Assert.Empty(edges);
         }
 
-        
-
-        
-        
-        
         [Fact]
         public void EfCore_DbSet_EmitsMapsToEdge()
         {
@@ -2434,14 +2334,9 @@ public class AppDbContext : DbContext
             var edges = adapter.Extract(compilation, "snap-b5-ef-001");
 
             Assert.NotNull(edges);
-            
+
         }
 
-        
-
-        
-        
-        
         [Fact]
         public void Serialization_JsonPropertyName_EmitsEdge()
         {
@@ -2458,7 +2353,6 @@ public class UserProfile
             var adapter = new SerializationAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-serial-001");
 
-            
             var emailEdges = edges.Where(e =>
                 e.Kind == "References" &&
                 e.SourceSymbolId.Contains("Email")).ToList();
@@ -2466,9 +2360,6 @@ public class UserProfile
             Assert.NotEmpty(emailEdges);
         }
 
-        
-        
-        
         [Fact]
         public void Serialization_NoAttributes_EmitsZeroEdges()
         {
@@ -2485,15 +2376,10 @@ public class Plain
             Assert.Empty(edges);
         }
 
-        
-
-        
-        
-        
         [Fact]
         public void TestAdapter_FactMethod_EmitsTestedByEdge()
         {
-            
+
             var syntaxTree = CSharpSyntaxTree.ParseText(@"
 using Xunit;
 
@@ -2520,13 +2406,9 @@ public class BarTests
             var adapter = new TestAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-test-001");
 
-            
             Assert.Empty(edges);
         }
 
-        
-        
-        
         [Fact]
         public void TestAdapter_NonTestProject_EmitsZeroEdges()
         {
@@ -2548,11 +2430,6 @@ public class Foo
             Assert.Empty(edges);
         }
 
-        
-
-        
-        
-        
         [Fact]
         public void EdgeRecord_FullConstructor_RoundTrips()
         {
@@ -2808,7 +2685,6 @@ public class Foo
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
 
-            
             var paths = traverser.TraceImpact("M:B|asm1", ImpactDirection.Downstream);
 
             Assert.Empty(paths);
@@ -2827,7 +2703,6 @@ public class Foo
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
 
-            
             var paths = traverser.TraceImpact("M:C|asm1", ImpactDirection.Downstream);
 
             Assert.Empty(paths);
@@ -2847,7 +2722,6 @@ public class Foo
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
 
-            
             var paths = traverser.TraceImpact(
                 "M:A|asm1", ImpactDirection.Downstream,
                 allowedEdgeKinds: new HashSet<string> { "Calls", "Reads" });
@@ -2871,7 +2745,6 @@ public class Foo
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
 
-            
             var paths = traverser.TraceImpact("M:A|asm1", ImpactDirection.Downstream);
 
             var path = Assert.Single(paths);
@@ -2992,8 +2865,6 @@ class Bar {
             var extractor = new ReflectionExtractor(compilation, "snap-b6-nameof-unresolved");
             var edges = extractor.Extract();
 
-            
-            
             Assert.Empty(edges);
         }
 
@@ -3048,7 +2919,7 @@ class Target { }
 class Source {
     void M() { var x = System.Activator.CreateInstance<Target>(); }
 }";
-            
+
             var systemRuntimePath = typeof(System.Activator).Assembly.Location;
             var syntaxTree = CSharpSyntaxTree.ParseText(source, path: "test.cs");
             var compilation = CSharpCompilation.Create(
@@ -3061,8 +2932,6 @@ class Source {
             var extractor = new ReflectionExtractor(compilation, "snap-b6-activator");
             var edges = extractor.Extract();
 
-            
-            
             var unknownEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionTargetUnknown.ToString()).ToList();
             Assert.NotEmpty(unknownEdges);
             Assert.Contains(unknownEdges, e => e.Provenance == "runtime_unknown");

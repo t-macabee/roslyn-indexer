@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -6,10 +6,7 @@ using Lurp.Storage;
 
 namespace Lurp.Workspace
 {
-    
-    
-    
-    
+
     public class SemanticDiffer
     {
         private readonly IIndexStore _store;
@@ -19,9 +16,6 @@ namespace Lurp.Workspace
             _store = store ?? throw new ArgumentNullException(nameof(store));
         }
 
-        
-        
-        
         public List<SemanticChange> ComputeDiff(string fromSnapshotId, string toSnapshotId)
         {
             var changes = new List<SemanticChange>();
@@ -32,7 +26,6 @@ namespace Lurp.Workspace
             var fromSet = new HashSet<string>(fromSymbols);
             var toSet = new HashSet<string>(toSymbols);
 
-            
             foreach (var symbolId in toSymbols)
             {
                 if (!fromSet.Contains(symbolId))
@@ -44,7 +37,6 @@ namespace Lurp.Workspace
                 }
             }
 
-            
             foreach (var symbolId in fromSymbols)
             {
                 if (!toSet.Contains(symbolId))
@@ -56,7 +48,6 @@ namespace Lurp.Workspace
                 }
             }
 
-            
             var common = fromSet.Intersect(toSet).ToList();
 
             foreach (var symbolId in common)
@@ -67,7 +58,6 @@ namespace Lurp.Workspace
                 if (fromInfo == null || toInfo == null)
                     continue;
 
-                
                 if (!string.Equals(fromInfo.FullyQualifiedName, toInfo.FullyQualifiedName, StringComparison.Ordinal) &&
                     fromInfo.SymbolId.DocCommentId == toInfo.SymbolId.DocCommentId)
                 {
@@ -77,16 +67,13 @@ namespace Lurp.Workspace
                         new { before = fromInfo.FullyQualifiedName, after = toInfo.FullyQualifiedName }));
                 }
 
-                
                 var metaChanges = CompareMetadata(symbolId, fromInfo.MetadataJson, toInfo.MetadataJson, fromSnapshotId, toSnapshotId);
                 changes.AddRange(metaChanges);
 
-                
                 var sourceChanges = CompareSource(symbolId, fromSnapshotId, toSnapshotId);
                 changes.AddRange(sourceChanges);
             }
 
-            
             var fromEdges = _store.GetEdges(fromSnapshotId);
             var toEdges = _store.GetEdges(toSnapshotId);
 
@@ -95,7 +82,6 @@ namespace Lurp.Workspace
             var toEdgeSet = new HashSet<(string source, string target, string kind)>(
                 toEdges.Select(e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind)));
 
-            
             foreach (var edge in toEdges)
             {
                 var key = (edge.SourceSymbolId, edge.TargetSymbolId, edge.Kind);
@@ -108,7 +94,6 @@ namespace Lurp.Workspace
                 }
             }
 
-            
             foreach (var edge in fromEdges)
             {
                 var key = (edge.SourceSymbolId, edge.TargetSymbolId, edge.Kind);
@@ -123,10 +108,6 @@ namespace Lurp.Workspace
 
             return changes;
         }
-
-        
-        
-        
 
         private List<string> GetSymbolIdsInSnapshot(string snapshotId)
         {
@@ -150,7 +131,6 @@ namespace Lurp.Workspace
                 ? new Dictionary<string, JsonElement>()
                 : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(toJson) ?? new();
 
-            
             var fromAcc = GetMetaString(fromMeta, "accessibility");
             var toAcc = GetMetaString(toMeta, "accessibility");
             if (fromAcc != null && toAcc != null && fromAcc != toAcc)
@@ -159,7 +139,6 @@ namespace Lurp.Workspace
                     new { before = fromAcc, after = toAcc }));
             }
 
-            
             var fromSig = GetMetaString(fromMeta, "signature");
             var toSig = GetMetaString(toMeta, "signature");
             if (fromSig != null && toSig != null && fromSig != toSig)
@@ -168,7 +147,6 @@ namespace Lurp.Workspace
                     new { before = fromSig, after = toSig }));
             }
 
-            
             var fromBase = GetMetaString(fromMeta, "base_type");
             var toBase = GetMetaString(toMeta, "base_type");
             if (fromBase != null && toBase != null && fromBase != toBase)
@@ -177,7 +155,6 @@ namespace Lurp.Workspace
                     new { before = fromBase, after = toBase }));
             }
 
-            
             var fromAttrs = GetMetaArray(fromMeta, "attributes");
             var toAttrs = GetMetaArray(toMeta, "attributes");
             if (fromAttrs != null && toAttrs != null && !fromAttrs.SequenceEqual(toAttrs))
@@ -205,7 +182,6 @@ namespace Lurp.Workspace
             var fromBody = _store.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Body);
             var toBody = _store.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Body);
 
-            
             if (fromSig == toSig)
             {
                 if (fromBody != toBody)

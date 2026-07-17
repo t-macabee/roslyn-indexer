@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage.Migrations
 {
@@ -10,7 +10,6 @@ namespace Lurp.Storage.Migrations
         {
             using var command = connection.CreateCommand();
 
-            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS schema_metadata (
                     version INTEGER NOT NULL,
@@ -20,7 +19,6 @@ namespace Lurp.Storage.Migrations
             ";
             command.ExecuteNonQuery();
 
-            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS workspaces (
                     workspace_id TEXT PRIMARY KEY,
@@ -30,7 +28,6 @@ namespace Lurp.Storage.Migrations
             ";
             command.ExecuteNonQuery();
 
-            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS snapshots (
                     snapshot_id TEXT PRIMARY KEY,
@@ -47,7 +44,6 @@ namespace Lurp.Storage.Migrations
             ";
             command.ExecuteNonQuery();
 
-            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS projects (
                     project_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,7 +54,6 @@ namespace Lurp.Storage.Migrations
             ";
             command.ExecuteNonQuery();
 
-            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS project_references (
                     project_id INTEGER NOT NULL REFERENCES projects(project_id),
@@ -67,7 +62,6 @@ namespace Lurp.Storage.Migrations
             ";
             command.ExecuteNonQuery();
 
-            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS documents (
                     document_id TEXT PRIMARY KEY,
@@ -76,7 +70,6 @@ namespace Lurp.Storage.Migrations
             ";
             command.ExecuteNonQuery();
 
-            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS document_versions (
                     document_version_id TEXT PRIMARY KEY,
@@ -89,7 +82,6 @@ namespace Lurp.Storage.Migrations
             ";
             command.ExecuteNonQuery();
 
-            
             command.CommandText = @"
                 CREATE TABLE IF NOT EXISTS snapshot_documents (
                     snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id),
@@ -98,7 +90,6 @@ namespace Lurp.Storage.Migrations
             ";
             command.ExecuteNonQuery();
 
-            
             command.CommandText = "CREATE INDEX IF NOT EXISTS idx_snapshots_workspace_id ON snapshots(workspace_id);";
             command.ExecuteNonQuery();
 

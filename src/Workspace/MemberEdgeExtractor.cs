@@ -1,4 +1,4 @@
-using Lurp.Storage;
+﻿using Lurp.Storage;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -461,7 +461,6 @@ public sealed class MemberEdgeExtractor
                     }
                 }
 
-                
                 if (member is IPropertySymbol property)
                 {
                     foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
@@ -520,7 +519,6 @@ public sealed class MemberEdgeExtractor
         if (string.IsNullOrEmpty(documentPath))
             return false;
 
-        
         var docId = new DocumentId(documentPath);
         if (_generatedDocuments.Contains(docId))
             return true;

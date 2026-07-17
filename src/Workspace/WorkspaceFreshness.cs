@@ -1,30 +1,11 @@
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using Lurp.Storage;
 
 namespace Lurp;
 
-
-
-
-
 public static class WorkspaceFreshness
 {
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
     public sealed record FreshnessResult(
         bool IsFresh,
         IReadOnlyList<SnapshotMismatch> Mismatches,
@@ -32,14 +13,6 @@ public static class WorkspaceFreshness
         SnapshotId? StoredSnapshotId,
         WorkspaceId? StoredWorkspaceId);
 
-    
-    
-    
-    
-    
-    
-    
-    
     public static FreshnessResult CheckFreshness(
         WorkspaceInfo current,
         IIndexStore store)
@@ -68,20 +41,6 @@ public static class WorkspaceFreshness
         return CheckFreshness(current, richManifest);
     }
 
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     public static FreshnessResult CheckFreshness(
         WorkspaceInfo current,
         SnapshotManifest? stored)
@@ -105,21 +64,18 @@ public static class WorkspaceFreshness
                 StoredWorkspaceId: null);
         }
 
-        
         if (current.Id.Value != stored.WorkspaceId.Value)
         {
             mismatches.Add(new SnapshotMismatch(
-                MismatchKind.SdkChanged, 
+                MismatchKind.SdkChanged,
                 $"Workspace identity mismatch: current '{current.Id.Value}' vs stored '{stored.WorkspaceId.Value}'.",
                 Document: null,
                 Detail: $"{current.Id.Value} → {stored.WorkspaceId.Value}"));
         }
 
-        
         var currentDocs = current.Documents;
         var storedDocs  = stored.DocumentVersions;
 
-        
         foreach (var (docId, _) in storedDocs)
         {
             if (!currentDocs.ContainsKey(docId))
@@ -132,7 +88,6 @@ public static class WorkspaceFreshness
             }
         }
 
-        
         foreach (var (docId, currentHash) in currentDocs)
         {
             if (!storedDocs.TryGetValue(docId, out var storedHash))
@@ -153,7 +108,6 @@ public static class WorkspaceFreshness
             }
         }
 
-        
         if (!string.Equals(current.SdkVersion, stored.SdkVersion, StringComparison.Ordinal))
         {
             mismatches.Add(new SnapshotMismatch(
@@ -173,11 +127,9 @@ public static class WorkspaceFreshness
                 Detail: $"{stored.CompilerVersion} → {currentCompiler}"));
         }
 
-        
         var currentTfms = current.TargetFrameworks;
         var storedTfms  = stored.TargetFrameworks;
 
-        
         foreach (var (projName, _) in storedTfms)
         {
             if (!currentTfms.ContainsKey(projName))
@@ -190,7 +142,6 @@ public static class WorkspaceFreshness
             }
         }
 
-        
         foreach (var (projName, currentTfm) in currentTfms)
         {
             if (!storedTfms.TryGetValue(projName, out var storedTfm))
@@ -211,11 +162,9 @@ public static class WorkspaceFreshness
             }
         }
 
-        
         var currentGraph = current.ProjectGraph;
         var storedGraph  = stored.ProjectGraph;
 
-        
         var allProjects = new HashSet<string>(StringComparer.Ordinal);
         foreach (var k in currentGraph.Keys) allProjects.Add(k);
         foreach (var k in storedGraph.Keys)  allProjects.Add(k);
@@ -239,7 +188,6 @@ public static class WorkspaceFreshness
             }
         }
 
-        
         if (!string.Equals(current.ExtractorVersion, stored.ExtractorVersion, StringComparison.Ordinal))
         {
             mismatches.Add(new SnapshotMismatch(

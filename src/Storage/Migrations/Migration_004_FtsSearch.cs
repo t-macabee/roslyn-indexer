@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage.Migrations
 {
@@ -10,8 +10,6 @@ namespace Lurp.Storage.Migrations
         {
             using var command = connection.CreateCommand();
 
-            
-            
             command.CommandText = @"
                 CREATE VIRTUAL TABLE IF NOT EXISTS source_fts USING fts5(
                     document_path,
@@ -23,7 +21,6 @@ namespace Lurp.Storage.Migrations
             ";
             command.ExecuteNonQuery();
 
-            
             command.CommandText = @"
                 CREATE VIRTUAL TABLE IF NOT EXISTS symbol_fts USING fts5(
                     symbol_id,

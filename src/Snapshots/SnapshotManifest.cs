@@ -1,17 +1,11 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using Lurp.Storage;
 
 namespace Lurp;
 
-
-
-
-
-
 public sealed class SnapshotManifest
 {
-    
 
     [JsonPropertyName("snapshotId")]
     [JsonConverter(typeof(SnapshotIdConverter))]
@@ -24,34 +18,24 @@ public sealed class SnapshotManifest
     [JsonPropertyName("builtAtUtc")]
     public DateTime BuiltAtUtc { get; init; }
 
-    
-
-    
     [JsonPropertyName("documentVersions")]
     [JsonConverter(typeof(DocumentVersionMapConverter))]
     public Dictionary<DocumentId, DocumentVersionId> DocumentVersions { get; init; }
         = new Dictionary<DocumentId, DocumentVersionId>();
 
-    
-
     [JsonPropertyName("sdkVersion")]
     public string SdkVersion { get; init; } = "";
 
-    
     [JsonPropertyName("compilerVersion")]
     public string CompilerVersion { get; init; } = "";
 
-    
     [JsonPropertyName("targetFrameworks")]
     public Dictionary<string, string> TargetFrameworks { get; init; }
         = new Dictionary<string, string>();
 
-    
     [JsonPropertyName("projectGraph")]
     public Dictionary<string, string[]> ProjectGraph { get; init; }
         = new Dictionary<string, string[]>();
-
-    
 
     [JsonPropertyName("databaseSchemaVersion")]
     public int DatabaseSchemaVersion { get; init; }
@@ -65,18 +49,10 @@ public sealed class SnapshotManifest
     [JsonPropertyName("toolVersion")]
     public string ToolVersion { get; init; } = "";
 
-    
-
-    
     [JsonPropertyName("previousSnapshotId")]
     [JsonConverter(typeof(NullableSnapshotIdConverter))]
     public SnapshotId? PreviousSnapshotId { get; init; }
 
-    
-
-    
-    
-    
     public static SnapshotManifest FromWorkspace(
         WorkspaceInfo workspace,
         SnapshotId snapshotId,
@@ -103,22 +79,12 @@ public sealed class SnapshotManifest
         };
     }
 
-    
-
-    
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    
-    
-    
-    
-    
-    
-    
     public void Save(IIndexStore store,
         IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
         string? jsonExportPath = null)
@@ -136,7 +102,6 @@ public sealed class SnapshotManifest
         }
     }
 
-    
     public static SnapshotManifest Load(string path)
     {
         var json = File.ReadAllText(path);
@@ -144,7 +109,6 @@ public sealed class SnapshotManifest
                ?? throw new InvalidOperationException("Failed to deserialize snapshot manifest.");
     }
 
-    
     internal Storage.SnapshotManifest ToStorageManifest(
         IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
     {
@@ -187,11 +151,6 @@ public sealed class SnapshotManifest
         );
     }
 
-    
-    
-    
-    
-    
     internal static SnapshotManifest FromStorageManifest(Storage.SnapshotManifest storage)
     {
         var documentVersions = new Dictionary<DocumentId, DocumentVersionId>();
@@ -219,10 +178,6 @@ public sealed class SnapshotManifest
             PreviousSnapshotId = null,
         };
     }
-
-    
-    
-    
 
     private sealed class SnapshotIdConverter : JsonConverter<SnapshotId>
     {
@@ -290,7 +245,7 @@ public sealed class SnapshotManifest
 
         private static WorkspaceId ParseWorkspaceUri(string uri)
         {
-            
+
             const string prefix = "workspace://";
             if (!uri.StartsWith(prefix, StringComparison.Ordinal))
                 throw new JsonException($"Invalid WorkspaceId URI: {uri}");
