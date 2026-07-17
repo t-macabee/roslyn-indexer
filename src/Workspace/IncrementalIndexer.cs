@@ -127,6 +127,7 @@ public sealed class IncrementalIndexer
             Console.Write("Preparing snapshot data (copy forward, remove stale)... ");
 
             _store.CopyEdgesToSnapshot(previousSnapshotId, newSnapshotIdStr);
+            _store.CopySnapshotDiagnostics(previousSnapshotId, newSnapshotIdStr);
 
             // Delete ALL edges from affected-project documents before re-extraction.
             // We re-extract the full project compilation, so deleting only changedPaths
@@ -148,13 +149,22 @@ public sealed class IncrementalIndexer
 
             // Also delete edges with NULL source_document_path — they can't be matched
             // by the IN clause above (NULL != anything in SQL), so they'd accumulate
-            // as duplicates on every incremental pass.  Re-extraction will regenerate them.
-            _store.DeleteEdgesWithNullDocumentPath(newSnapshotIdStr);
+            // as duplicates on every incremental pass. Re-extraction will regenerate
+            // them. Scoped to the affected projects' assembly identities so untouched
+            // projects' null-path edges (copied forward above) are left alone.
+            var affectedAssemblyIdentities = affectedCompilations.Values
+                .Select(c => c.Assembly.Identity.GetDisplayName())
+                .ToList();
+            _store.DeleteEdgesWithNullDocumentPathForAssemblies(newSnapshotIdStr, affectedAssemblyIdentities);
 
             if (oldDocVersionIdSet.Count > 0)
                 _store.DeleteDeclarationsByDocumentVersionIds(oldDocVersionIdSet);
 
             _store.CopySnapshotSymbols(previousSnapshotId, newSnapshotIdStr);
+
+            // Delete stale diagnostics copied forward for affected projects so
+            // the re-extraction below doesn't duplicate them.
+            _store.DeleteDiagnosticsByProjectNames(newSnapshotIdStr, affectedProjects);
 
             Console.WriteLine("done.");
 
@@ -368,7 +378,24 @@ public sealed class IncrementalIndexer
         }
 
         _store.DeleteEdgesByDocumentPaths(newSnapshotId, affectedProjectPaths);
-        _store.DeleteEdgesWithNullDocumentPath(newSnapshotId);
+
+        var crossDocCompilations = new Dictionary<string, Compilation>(StringComparer.Ordinal);
+        foreach (var project in solution.Projects)
+        {
+            if (!affectedProjectNames.Contains(project.Name))
+                continue;
+            var compilation = await project.GetCompilationAsync();
+            if (compilation != null)
+                crossDocCompilations[project.Name] = compilation;
+        }
+
+        // Scoped by assembly identity — see the comment on
+        // DeleteEdgesWithNullDocumentPathForAssemblies for why path-based
+        // deletion can't cover these edges.
+        var crossDocAssemblyIdentities = crossDocCompilations.Values
+            .Select(c => c.Assembly.Identity.GetDisplayName())
+            .ToList();
+        _store.DeleteEdgesWithNullDocumentPathForAssemblies(newSnapshotId, crossDocAssemblyIdentities);
 
         int totalEdges = 0;
         foreach (var project in solution.Projects)
@@ -376,8 +403,7 @@ public sealed class IncrementalIndexer
             if (!affectedProjectNames.Contains(project.Name))
                 continue;
 
-            var compilation = await project.GetCompilationAsync();
-            if (compilation == null)
+            if (!crossDocCompilations.TryGetValue(project.Name, out var compilation))
                 continue;
 
             var result = CompilationFactExtractor.ExtractAll(

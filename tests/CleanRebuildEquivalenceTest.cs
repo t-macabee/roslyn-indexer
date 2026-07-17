@@ -85,6 +85,36 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }
 
+    // Regression test for a scoping gap in DeleteEdgesWithNullDocumentPathForAssemblies:
+    // edges sourced from symbols with no DeclaringSyntaxReferences (e.g. an
+    // implicit default constructor) carry a NULL source_document_path, which
+    // can't be scoped to a project by path. If the incremental indexer
+    // deletes all null-path edges snapshot-wide instead of only those
+    // belonging to re-extracted projects, an untouched project's null-path
+    // edges are deleted and never regenerated, causing the incremental
+    // snapshot to silently lose edges relative to a full rebuild.
+    [Fact]
+    public async Task IncrementalIndex_Matches_FullRebuild_WhenUnaffectedProjectHasImplicitMembers()
+    {
+
+        if (!MSBuildLocator.IsRegistered)
+        {
+            throw new SkipException("MSBuild is not available on this system. Cannot run integration test.");
+        }
+
+        CreateMultiProjectTestSolution();
+
+        var snapshotA = await RunFullIndexAsync("Index A (full initial, multi-project)");
+
+        ModifyFileInProjectB();
+
+        var snapshotB = await RunIncrementalIndexAsync("Index B (incremental, only ProjectB touched)");
+
+        var snapshotC = await RunFullIndexAsync("Index C (full after change)", deleteFirst: false);
+
+        CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
+    }
+
     private async Task<string> RunFullIndexAsync(string label, bool deleteFirst = true)
     {
         Console.WriteLine($"--- {label} ---");
@@ -374,6 +404,93 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
                 public int Subtract(int a, int b)
                 {
                     return a - b;
+                }
+
+                // Added method
+                public int Multiply(int a, int b)
+                {
+                    return a * b;
+                }
+            }
+            """);
+    }
+
+    private void CreateMultiProjectTestSolution()
+    {
+        var projADir = Path.Combine(_testDir, "src", "ProjectA");
+        Directory.CreateDirectory(projADir);
+
+        File.WriteAllText(Path.Combine(projADir, "ProjectA.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>");
+
+        // No explicit constructor: Roslyn synthesizes an implicit parameterless
+        // constructor with no DeclaringSyntaxReferences, so the edge sourced from
+        // it has a NULL source_document_path. ProjectA is never touched by the
+        // incremental run in the test below, so its edges must survive unchanged.
+        File.WriteAllText(Path.Combine(projADir, "Widgets.cs"), """
+            namespace ProjectA;
+
+            public class Widget
+            {
+                public string Name { get; set; } = "";
+            }
+
+            public class Gadget
+            {
+                public int Count { get; set; }
+            }
+            """);
+
+        var projBDir = Path.Combine(_testDir, "src", "ProjectB");
+        Directory.CreateDirectory(projBDir);
+
+        File.WriteAllText(Path.Combine(projBDir, "ProjectB.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>");
+
+        File.WriteAllText(Path.Combine(projBDir, "Calculator.cs"), """
+            namespace ProjectB;
+
+            public class Calculator
+            {
+                public int Add(int a, int b)
+                {
+                    return a + b;
+                }
+            }
+            """);
+
+        File.WriteAllText(_solutionPath, $"""
+            <Solution>
+              <Folder Name="/src/">
+                <Project Path="src/ProjectA/ProjectA.csproj" />
+                <Project Path="src/ProjectB/ProjectB.csproj" />
+              </Folder>
+            </Solution>
+            """);
+    }
+
+    private void ModifyFileInProjectB()
+    {
+        var calculatorPath = Path.Combine(_testDir, "src", "ProjectB", "Calculator.cs");
+        File.WriteAllText(calculatorPath,
+            """
+            namespace ProjectB;
+
+            public class Calculator
+            {
+                public int Add(int a, int b)
+                {
+                    return a + b;
                 }
 
                 // Added method

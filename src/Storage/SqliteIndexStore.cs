@@ -1240,14 +1240,38 @@ namespace Lurp.Storage
             }
         }
 
-        public void DeleteEdgesWithNullDocumentPath(string snapshotId)
+        // Edges sourced from symbols with no DeclaringSyntaxReferences (e.g. an
+        // implicit default constructor) carry a NULL source_document_path, so they
+        // can't be scoped to a project by path the way DeleteEdgesByDocumentPaths
+        // scopes ordinary edges. Every symbol id is "<docCommentId>|<assemblyIdentity>"
+        // (see SymbolExtractor.MakeSymbolId), and assembly identity is stable per
+        // project across recompiles, so we scope by matching that suffix instead —
+        // this deletes only the re-extracted project(s)' null-path edges and leaves
+        // untouched projects' null-path edges (copied forward from the previous
+        // snapshot) alone.
+        public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities)
         {
+            var identityList = assemblyIdentities as IReadOnlyCollection<string> ?? assemblyIdentities.ToList();
+            if (identityList.Count == 0)
+                return;
+
             EnsureOpen();
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
             using var command = connection.CreateCommand();
-            command.CommandText = "DELETE FROM edges WHERE snapshot_id = @snapshotId AND source_document_path IS NULL;";
+            command.CommandText = @"
+                DELETE FROM edges
+                WHERE snapshot_id = @snapshotId
+                  AND source_document_path IS NULL
+                  AND (" + string.Join(" OR ", identityList.Select((_, i) => $"source_symbol_id LIKE @p{i} ESCAPE '\\'")) + @");
+            ";
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            int i = 0;
+            foreach (var identity in identityList)
+            {
+                var escaped = identity.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+                command.Parameters.AddWithValue($"@p{i++}", "%|" + escaped);
+            }
             command.ExecuteNonQuery();
         }
 
@@ -1300,6 +1324,49 @@ namespace Lurp.Storage
             ";
             command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
             command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+            command.ExecuteNonQuery();
+        }
+
+        public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                INSERT INTO diagnostics (
+                    snapshot_id, project_name, document_path, severity, id, message,
+                    start_line, start_column, end_line, end_column
+                )
+                SELECT @toSnapshotId, project_name, document_path, severity, id, message,
+                       start_line, start_column, end_line, end_column
+                FROM diagnostics
+                WHERE snapshot_id = @fromSnapshotId;
+            ";
+            command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
+            command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+            command.ExecuteNonQuery();
+        }
+
+        public void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames)
+        {
+            var nameList = projectNames as IReadOnlyCollection<string> ?? projectNames.ToList();
+            if (nameList.Count == 0)
+                return;
+
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                DELETE FROM diagnostics
+                WHERE snapshot_id = @snapshotId
+                  AND project_name IN (" + string.Join(", ", nameList.Select((_, i) => $"@p{i}")) + @");
+            ";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            int i = 0;
+            foreach (var name in nameList)
+                command.Parameters.AddWithValue($"@p{i++}", name);
             command.ExecuteNonQuery();
         }
 

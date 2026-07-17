@@ -17,7 +17,10 @@ namespace Lurp.Storage
         List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId);
 
         void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths);
-        void DeleteEdgesWithNullDocumentPath(string snapshotId);
+        void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities);
         void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId);
+
+        void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId);
+        void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames);
     }
 }
