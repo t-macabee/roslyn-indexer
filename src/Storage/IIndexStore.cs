@@ -111,6 +111,7 @@ namespace Lurp.Storage
         List<SemanticChange> GetSemanticChanges(string fromSnapshotId, string toSnapshotId);
         List<string> GetSnapshotIds(string workspaceId);
         List<string> GetSymbolIdsInSnapshot(string snapshotId);
+        string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false);
     }
 }
 

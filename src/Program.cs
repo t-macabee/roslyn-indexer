@@ -62,6 +62,12 @@ namespace Lurp
                 return;
             }
 
+            if (args.Contains("--mode=context"))
+            {
+                RunContext(args);
+                return;
+            }
+
             if (args.Contains("--mode=test-migration"))
             {
                 TestMigration();
@@ -91,7 +97,7 @@ namespace Lurp
                 return;
             }
 
-            Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=status, or --mode=test-migration.");
+            Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=context, --mode=status, or --mode=test-migration.");
             Environment.Exit(1);
         }
 
@@ -886,6 +892,177 @@ namespace Lurp
             {
                 store.Close();
             }
+        }
+
+        private static void RunContext(string[] args)
+        {
+            var symbolArg = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
+            var fileArg = args.FirstOrDefault(a => a.StartsWith("--file="))?.Split('=', 2)[1];
+            var lineArg = args.FirstOrDefault(a => a.StartsWith("--line="))?.Split('=', 2)[1];
+            var intentArg = args.FirstOrDefault(a => a.StartsWith("--intent="))?.Split('=', 2)[1] ?? "inspect";
+            var budgetArg = args.FirstOrDefault(a => a.StartsWith("--budget="))?.Split('=', 2)[1];
+            var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
+            var maxHopsArg = args.FirstOrDefault(a => a.StartsWith("--max-hops="))?.Split('=', 2)[1];
+            var includeGenerated = args.Contains("--include-generated");
+
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
+                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+
+            if (string.IsNullOrEmpty(outputDirArg))
+            {
+                Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
+                Environment.Exit(1);
+            }
+
+            bool hasSymbol = !string.IsNullOrEmpty(symbolArg);
+            bool hasFile = !string.IsNullOrEmpty(fileArg) && !string.IsNullOrEmpty(lineArg);
+
+            if (!hasSymbol && !hasFile)
+            {
+                Console.Error.WriteLine("ERROR: Either --symbol=<symbolId> or --file=<path> --line=<line> is required for --mode=context.");
+                Environment.Exit(1);
+            }
+
+            ContextIntent intent;
+            switch (intentArg.ToLowerInvariant())
+            {
+                case "inspect": intent = ContextIntent.Inspect; break;
+                case "modify": intent = ContextIntent.Modify; break;
+                case "diagnose": intent = ContextIntent.Diagnose; break;
+                default:
+                    Console.Error.WriteLine("ERROR: --intent must be one of: inspect, modify, diagnose.");
+                    Environment.Exit(1);
+                    return;
+            }
+
+            int budget = 8000;
+            if (!string.IsNullOrEmpty(budgetArg) && (!int.TryParse(budgetArg, out budget) || budget < 1))
+            {
+                Console.Error.WriteLine("ERROR: --budget must be a positive integer.");
+                Environment.Exit(1);
+            }
+
+            int maxHops = 3;
+            if (!string.IsNullOrEmpty(maxHopsArg) && (!int.TryParse(maxHopsArg, out maxHops) || maxHops < 1))
+            {
+                Console.Error.WriteLine("ERROR: --max-hops must be a positive integer.");
+                Environment.Exit(1);
+            }
+
+            var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+            if (!File.Exists(dbPath))
+            {
+                Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
+                Environment.Exit(1);
+            }
+
+            var store = new SqliteIndexStore(dbPath);
+            store.Open(dbPath);
+
+            try
+            {
+                var snapshotId = snapshotArg;
+                if (string.IsNullOrEmpty(snapshotId))
+                {
+                    using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                    connection.Open();
+                    using var cmd = connection.CreateCommand();
+                    cmd.CommandText = "SELECT snapshot_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
+                    var latestSnapshot = cmd.ExecuteScalar() as string;
+                    if (latestSnapshot == null)
+                    {
+                        Console.Error.WriteLine("ERROR: No snapshots found in the database.");
+                        Environment.Exit(1);
+                    }
+                    snapshotId = latestSnapshot;
+                }
+
+                if (hasSymbol)
+                {
+                    var symbolId = SymbolId.Parse(symbolArg!);
+                    var assembler = new ContextAssembler(
+                        store: store,
+                        snapshotId: snapshotId,
+                        symbolId: symbolId,
+                        intent: intent,
+                        budget: budget,
+                        maxHops: maxHops,
+                        includeGenerated: includeGenerated);
+                    var capsule = assembler.Assemble();
+                    WriteCapsuleOutput(capsule, outputDirArg);
+                }
+                else
+                {
+                    if (!int.TryParse(lineArg, out var lineNumber) || lineNumber < 1)
+                    {
+                        Console.Error.WriteLine("ERROR: --line must be a positive integer.");
+                        Environment.Exit(1);
+                    }
+
+                    var resolvedId = store.ResolveSymbolByLocation(fileArg!, lineNumber, snapshotId, includeGenerated);
+
+                    if (resolvedId == null)
+                    {
+                        var gapAnchor = new CapsuleAnchor(
+                            symbolId: $"file://{fileArg}:{lineNumber}",
+                            fullyQualifiedName: $"<no symbol at {fileArg}:{lineNumber}>",
+                            kind: "gap",
+                            source: string.Empty);
+
+                        var gapCapsule = new ContextCapsule(gapAnchor)
+                        {
+                            Budget = budget,
+                            EstimatedTokens = 0,
+                            Truncated = false,
+                        };
+
+                        gapCapsule.Uncertainties.Add(new UncertaintyEntry(
+                            new List<string> { gapAnchor.SymbolId },
+                            "location_gap",
+                            $"No symbol found at {fileArg}:{lineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
+
+                        WriteCapsuleOutput(gapCapsule, outputDirArg);
+                    }
+                    else
+                    {
+                        var symbolId = SymbolId.Parse(resolvedId);
+                        var assembler = new ContextAssembler(
+                            store: store,
+                            snapshotId: snapshotId,
+                            symbolId: symbolId,
+                            intent: intent,
+                            budget: budget,
+                            maxHops: maxHops,
+                            includeGenerated: includeGenerated);
+                        var capsule = assembler.Assemble();
+                        WriteCapsuleOutput(capsule, outputDirArg);
+                    }
+                }
+            }
+            finally
+            {
+                store.Close();
+            }
+        }
+
+        private static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg)
+        {
+            var json = JsonSerializer.Serialize(capsule, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            });
+
+            var safeName = capsule.Anchor.SymbolId
+                .Replace('|', '_')
+                .Replace(':', '_')
+                .Replace('/', '_')
+                .Replace('\\', '_');
+            var outputFileName = $"capsule-{safeName}.json";
+            var outputPath = Path.Combine(Path.GetFullPath(outputDirArg), outputFileName);
+            File.WriteAllText(outputPath, json);
+
+            Console.WriteLine(json);
         }
 
         private static void ShowStatus()

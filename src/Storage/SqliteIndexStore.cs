@@ -1306,6 +1306,71 @@ namespace Lurp.Storage
             return results;
         }
 
+        public string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+
+            using var getDocCmd = connection.CreateCommand();
+            getDocCmd.CommandText = @"
+                SELECT dv.document_version_id, dv.line_starts
+                FROM snapshot_documents sd
+                JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+                JOIN documents doc ON doc.document_id = dv.document_id
+                WHERE sd.snapshot_id = @snapshotId AND doc.relative_path = @relativePath
+                LIMIT 1;
+            ";
+            getDocCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+            getDocCmd.Parameters.AddWithValue("@relativePath", relativePath);
+
+            string? docVersionId;
+            string? lineStartsJson;
+            using (var reader = getDocCmd.ExecuteReader())
+            {
+                if (!reader.Read())
+                    return null;
+                docVersionId = reader.GetString(0);
+                lineStartsJson = reader.IsDBNull(1) ? null : reader.GetString(1);
+            }
+
+            if (lineStartsJson == null)
+                return null;
+
+            var lineStarts = JsonSerializer.Deserialize<int[]>(lineStartsJson);
+            if (lineStarts == null || lineStarts.Length == 0)
+                return null;
+
+            int lineIndex = Math.Max(0, line - 1);
+            if (lineIndex >= lineStarts.Length)
+                return null;
+
+            int byteOffset = lineStarts[lineIndex];
+
+            using var findCmd = connection.CreateCommand();
+            findCmd.CommandText = @"
+                SELECT d.symbol_id
+                FROM declarations d
+                WHERE d.document_version_id = @docVersionId
+                  AND d.full_start IS NOT NULL
+                  AND d.full_end IS NOT NULL
+                  AND d.full_start <= @byteOffset
+                  AND d.full_end > @byteOffset
+            ";
+
+            if (!includeGenerated)
+            {
+                findCmd.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
+            }
+
+            findCmd.CommandText += " ORDER BY (d.full_end - d.full_start) ASC LIMIT 1;";
+
+            findCmd.Parameters.AddWithValue("@docVersionId", docVersionId);
+            findCmd.Parameters.AddWithValue("@byteOffset", byteOffset);
+
+            return findCmd.ExecuteScalar() as string;
+        }
+
         private static string? DeriveParentTypeDocCommentId(string docCommentId)
         {
             if (string.IsNullOrEmpty(docCommentId))
