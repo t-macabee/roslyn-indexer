@@ -78,6 +78,7 @@ namespace Lurp.Storage
         void SaveWorkspace(WorkspaceId id, string gitRoot, string solutionPath, DateTime createdAtUtc);
         void SaveSnapshot(SnapshotManifest manifest);
         SnapshotManifest? LoadLatestSnapshot(WorkspaceId workspaceId);
+        string? GetLatestSnapshotId(string? workspaceId = null);
         string? GetSource(string relativePath, string snapshotId);
 
         void SaveDeclarations(string snapshotId, IEnumerable<SymbolDeclaration> declarations);
@@ -88,7 +89,7 @@ namespace Lurp.Storage
 
         void BuildSearchIndex(string snapshotId);
         List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false);
-        List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false);
+        List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null);
         SymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false);
 
         

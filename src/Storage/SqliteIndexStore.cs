@@ -248,6 +248,26 @@ namespace Lurp.Storage
             );
         }
 
+        public string? GetLatestSnapshotId(string? workspaceId = null)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            if (!string.IsNullOrEmpty(workspaceId))
+            {
+                command.CommandText = "SELECT snapshot_id FROM snapshots WHERE workspace_id = @workspaceId ORDER BY built_at_utc DESC LIMIT 1;";
+                command.Parameters.AddWithValue("@workspaceId", workspaceId);
+            }
+            else
+            {
+                command.CommandText = "SELECT snapshot_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
+            }
+
+            return command.ExecuteScalar() as string;
+        }
+
         public string? GetSource(string relativePath, string snapshotId)
         {
             EnsureOpen();
@@ -698,7 +718,7 @@ namespace Lurp.Storage
             return results;
         }
 
-        public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false)
+        public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
         {
             EnsureOpen();
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
@@ -712,6 +732,12 @@ namespace Lurp.Storage
                 WHERE symbol_fts MATCH @query
                   AND symbol_fts.snapshot_id = @snapshotId
             ";
+
+            if (!string.IsNullOrEmpty(kind))
+            {
+                command.CommandText += " AND symbol_fts.kind = @kind";
+                command.Parameters.AddWithValue("@kind", kind);
+            }
 
             if (!includeGenerated)
             {

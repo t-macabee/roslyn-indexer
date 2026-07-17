@@ -98,6 +98,9 @@ namespace Lurp
             }
 
             Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=context, --mode=status, or --mode=test-migration.");
+            Console.Error.WriteLine("  Note: 'structure' is served by --mode=context --intent=inspect.");
+            Console.Error.WriteLine("  Note: 'who-references' is served by --mode=impact --direction=upstream.");
+            Console.Error.WriteLine("  Note: 'discover' is served by --mode=search --type=symbol --kind=<TypeKind>.");
             Environment.Exit(1);
         }
 
@@ -140,12 +143,7 @@ namespace Lurp
                 }
                 else
                 {
-                    
-                    using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-                    connection.Open();
-                    using var cmd = connection.CreateCommand();
-                    cmd.CommandText = "SELECT snapshot_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
-                    var latestSnapshot = cmd.ExecuteScalar() as string;
+                    var latestSnapshot = _indexStore.GetLatestSnapshotId();
                     if (latestSnapshot == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
@@ -212,17 +210,12 @@ namespace Lurp
                 var snapshotId = snapshotArg;
                 if (string.IsNullOrEmpty(snapshotId))
                 {
-                    using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-                    connection.Open();
-                    using var cmd = connection.CreateCommand();
-                    cmd.CommandText = "SELECT snapshot_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
-                    var latestSnapshot = cmd.ExecuteScalar() as string;
-                    if (latestSnapshot == null)
+                    snapshotId = _indexStore.GetLatestSnapshotId();
+                    if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
                         Environment.Exit(1);
                     }
-                    snapshotId = latestSnapshot;
                 }
 
                 ViewKind viewKind = ViewKind.Declaration;
@@ -332,6 +325,7 @@ namespace Lurp
             var typeArg = args.FirstOrDefault(a => a.StartsWith("--type="))?.Split('=', 2)[1] ?? "all";
             var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
             var limitArg = args.FirstOrDefault(a => a.StartsWith("--limit="))?.Split('=', 2)[1];
+            var kindArg = args.FirstOrDefault(a => a.StartsWith("--kind="))?.Split('=', 2)[1];
             var includeGenerated = args.Contains("--include-generated");
             int limit = 20;
             if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, out limit))
@@ -363,17 +357,12 @@ namespace Lurp
                 var snapshotId = snapshotArg;
                 if (string.IsNullOrEmpty(snapshotId))
                 {
-                    using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-                    connection.Open();
-                    using var cmd = connection.CreateCommand();
-                    cmd.CommandText = "SELECT snapshot_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
-                    var latestSnapshot = cmd.ExecuteScalar() as string;
-                    if (latestSnapshot == null)
+                    snapshotId = _indexStore.GetLatestSnapshotId();
+                    if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
                         Environment.Exit(1);
                     }
-                    snapshotId = latestSnapshot;
                 }
 
                 var results = new List<object>();
@@ -389,7 +378,7 @@ namespace Lurp
 
                 if (typeArg == "symbol" || typeArg == "all")
                 {
-                    var symbolResults = _indexStore.SearchSymbols(queryArg, snapshotId, limit, includeGenerated);
+                    var symbolResults = _indexStore.SearchSymbols(queryArg, snapshotId, limit, includeGenerated, kindArg);
                     foreach (var r in symbolResults)
                     {
                         results.Add(new { type = "symbol", symbolId = r.SymbolId, fullyQualifiedName = r.FullyQualifiedName, kind = r.Kind, docCommentId = r.DocCommentId });
@@ -441,17 +430,12 @@ namespace Lurp
                 var snapshotId = snapshotArg;
                 if (string.IsNullOrEmpty(snapshotId))
                 {
-                    using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-                    connection.Open();
-                    using var cmd = connection.CreateCommand();
-                    cmd.CommandText = "SELECT snapshot_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
-                    var latestSnapshot = cmd.ExecuteScalar() as string;
-                    if (latestSnapshot == null)
+                    snapshotId = _indexStore.GetLatestSnapshotId();
+                    if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
                         Environment.Exit(1);
                     }
-                    snapshotId = latestSnapshot;
                 }
 
                 var info = _indexStore.ResolveSymbolByFqn(fqnArg, snapshotId, includeGenerated);
@@ -842,17 +826,12 @@ namespace Lurp
                 var snapshotId = snapshotArg;
                 if (string.IsNullOrEmpty(snapshotId))
                 {
-                    using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-                    connection.Open();
-                    using var cmd = connection.CreateCommand();
-                    cmd.CommandText = "SELECT snapshot_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
-                    var latestSnapshot = cmd.ExecuteScalar() as string;
-                    if (latestSnapshot == null)
+                    snapshotId = _indexStore.GetLatestSnapshotId();
+                    if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
                         Environment.Exit(1);
                     }
-                    snapshotId = latestSnapshot;
                 }
 
                 var traverser = new ImpactTraverser(store, snapshotId);
@@ -964,17 +943,12 @@ namespace Lurp
                 var snapshotId = snapshotArg;
                 if (string.IsNullOrEmpty(snapshotId))
                 {
-                    using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-                    connection.Open();
-                    using var cmd = connection.CreateCommand();
-                    cmd.CommandText = "SELECT snapshot_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
-                    var latestSnapshot = cmd.ExecuteScalar() as string;
-                    if (latestSnapshot == null)
+                    snapshotId = _indexStore.GetLatestSnapshotId();
+                    if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
                         Environment.Exit(1);
                     }
-                    snapshotId = latestSnapshot;
                 }
 
                 if (hasSymbol)
