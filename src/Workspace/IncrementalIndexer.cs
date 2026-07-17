@@ -129,8 +129,28 @@ public sealed class IncrementalIndexer
 
             _store.CopyEdgesToSnapshot(previousSnapshotId, newSnapshotIdStr);
 
-            if (changedPaths.Count > 0)
-                _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, changedPaths);
+            // Delete ALL edges from affected-project documents before re-extraction.
+            // We re-extract the full project compilation, so deleting only changedPaths
+            // would leave unchanged files' edges duplicated.
+            var affectedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var project in solution.Projects)
+            {
+                if (!affectedProjects.Contains(project.Name))
+                    continue;
+                foreach (var doc in project.Documents)
+                {
+                    if (doc.FilePath == null) continue;
+                    affectedProjectPaths.Add(GetRelativePath(doc.FilePath, _gitRoot));
+                }
+            }
+
+            if (affectedProjectPaths.Count > 0)
+                _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, affectedProjectPaths);
+
+            // Also delete edges with NULL source_document_path — they can't be matched
+            // by the IN clause above (NULL != anything in SQL), so they'd accumulate
+            // as duplicates on every incremental pass.  Re-extraction will regenerate them.
+            _store.DeleteEdgesWithNullDocumentPath(newSnapshotIdStr);
 
             if (oldDocVersionIdSet.Count > 0)
                 _store.DeleteDeclarationsByDocumentVersionIds(oldDocVersionIdSet);
@@ -211,7 +231,7 @@ public sealed class IncrementalIndexer
 
             Console.Write("Updating cross-document edges... ");
             var crossDocEdgesProcessed = await UpdateCrossDocumentEdgesAsync(
-                solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths);
+                solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects);
             totalEdges += crossDocEdgesProcessed;
             Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
 
@@ -328,7 +348,8 @@ public sealed class IncrementalIndexer
         WorkspaceInfo workspaceInfo,
         string newSnapshotId,
         string previousSnapshotId,
-        HashSet<string> changedPaths)
+        HashSet<string> changedPaths,
+        HashSet<string> alreadyProcessedProjects)
     {
 
         var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
@@ -356,8 +377,6 @@ public sealed class IncrementalIndexer
 
         Console.WriteLine($"  ({affectedPaths.Count} documents need cross-document edge refresh)");
 
-        _store.DeleteEdgesByDocumentPaths(newSnapshotId, affectedPaths);
-
         var affectedProjectNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var project in solution.Projects)
         {
@@ -372,6 +391,32 @@ public sealed class IncrementalIndexer
                 }
             }
         }
+
+        // Projects already fully re-extracted by the main incremental loop are already
+        // up to date; reprocessing them here would duplicate every edge in that project.
+        affectedProjectNames.ExceptWith(alreadyProcessedProjects);
+
+        if (affectedProjectNames.Count == 0)
+            return 0;
+
+        // Extractors run over the whole project compilation, not just affectedPaths, so
+        // every document belonging to an affected project must have its stale edges
+        // (copied forward from the previous snapshot) removed first — otherwise documents
+        // outside affectedPaths keep their old edges alongside the freshly extracted ones.
+        var affectedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in solution.Projects)
+        {
+            if (!affectedProjectNames.Contains(project.Name))
+                continue;
+            foreach (var doc in project.Documents)
+            {
+                if (doc.FilePath == null) continue;
+                affectedProjectPaths.Add(GetRelativePath(doc.FilePath, _gitRoot));
+            }
+        }
+
+        _store.DeleteEdgesByDocumentPaths(newSnapshotId, affectedProjectPaths);
+        _store.DeleteEdgesWithNullDocumentPath(newSnapshotId);
 
         int totalEdges = 0;
         foreach (var project in solution.Projects)

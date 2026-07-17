@@ -105,7 +105,7 @@ public sealed class SymbolExtractor
             var targetId = MakeSymbolId(typeSymbol.BaseType);
             if (targetId != null)
             {
-                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Inherits.ToString()));
+                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Inherits.ToString(), typeSymbol));
             }
         }
 
@@ -114,7 +114,7 @@ public sealed class SymbolExtractor
             var targetId = MakeSymbolId(iface);
             if (targetId != null)
             {
-                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Implements.ToString()));
+                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Implements.ToString(), typeSymbol));
             }
         }
 
@@ -124,7 +124,7 @@ public sealed class SymbolExtractor
             var nestedId = MakeSymbolId(nested);
             if (nestedId != null)
             {
-                edges.Add(MakeEdge(sourceId, nestedId, EdgeKind.Contains.ToString()));
+                edges.Add(MakeEdge(sourceId, nestedId, EdgeKind.Contains.ToString(), typeSymbol));
             }
         }
 
@@ -153,7 +153,7 @@ public sealed class SymbolExtractor
             var targetId = MakeSymbolId(namedType);
             if (targetId != null && targetId != sourceSymbolId)
             {
-                edges.Add(MakeEdge(sourceSymbolId, targetId, EdgeKind.References.ToString()));
+                edges.Add(MakeEdge(sourceSymbolId, targetId, EdgeKind.References.ToString(), member));
             }
         }
     }
@@ -521,15 +521,44 @@ public sealed class SymbolExtractor
             : null;
     }
 
-    private EdgeRecord MakeEdge(string sourceId, string targetId, string kind)
+    private EdgeRecord MakeEdge(string sourceId, string targetId, string kind, ISymbol sourceSymbol)
     {
+        var loc = GetSymbolSourceLocation(sourceSymbol);
         return new EdgeRecord(
             sourceSymbolId: sourceId,
             targetSymbolId: targetId,
             kind: kind,
             provenance: "roslyn",
             snapshotId: _snapshotId,
-            extractorVersion: VersionConstants.ExtractorVersion);
+            extractorVersion: VersionConstants.ExtractorVersion,
+            sourceDocumentPath: loc?.path,
+            sourceStartLine: loc?.startLine,
+            sourceStartColumn: loc?.startColumn,
+            sourceEndLine: loc?.endLine,
+            sourceEndColumn: loc?.endColumn);
+    }
+
+    private (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)?
+        GetSymbolSourceLocation(ISymbol symbol)
+    {
+        var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
+        if (syntaxRef == null)
+            return null;
+        var syntaxTree = syntaxRef.SyntaxTree;
+        if (syntaxTree == null)
+            return null;
+        var documentId = ResolveDocumentId(syntaxTree);
+        if (documentId == null)
+            return null;
+        var location = syntaxRef.GetSyntax().GetLocation();
+        if (location == null || !location.IsInSource)
+            return null;
+        var lineSpan = location.GetLineSpan();
+        return (documentId.Value.ToString(),
+                lineSpan.StartLinePosition.Line,
+                lineSpan.StartLinePosition.Character,
+                lineSpan.EndLinePosition.Line,
+                lineSpan.EndLinePosition.Character);
     }
 
     private static IEnumerable<INamedTypeSymbol> GetNamespaceTypeMembers(INamespaceSymbol ns)

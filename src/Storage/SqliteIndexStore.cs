@@ -147,14 +147,14 @@ namespace Lurp.Storage
                     command.ExecuteNonQuery();
 
                     command.CommandText = @"
-                        INSERT INTO document_versions (
+                        INSERT OR IGNORE INTO document_versions (
                             document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts
                         ) VALUES (
                             @documentVersionId, @documentId, @contentHash, @content, @encoding, @byteCount, @lineStarts
                         );
                     ";
                     command.Parameters.Clear();
-                    command.Parameters.AddWithValue("@documentVersionId", doc.DocumentId);
+                    command.Parameters.AddWithValue("@documentVersionId", doc.ContentHash);
                     command.Parameters.AddWithValue("@documentId", doc.DocumentId);
                     command.Parameters.AddWithValue("@contentHash", doc.ContentHash);
                     command.Parameters.AddWithValue("@content", (object?)(doc.Content) ?? (object)DBNull.Value);
@@ -169,7 +169,7 @@ namespace Lurp.Storage
                     ";
                     command.Parameters.Clear();
                     command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
-                    command.Parameters.AddWithValue("@documentVersionId", doc.DocumentId);
+                    command.Parameters.AddWithValue("@documentVersionId", doc.ContentHash);
                     command.ExecuteNonQuery();
                 }
 
@@ -1238,6 +1238,17 @@ namespace Lurp.Storage
                 transaction.Rollback();
                 throw;
             }
+        }
+
+        public void DeleteEdgesWithNullDocumentPath(string snapshotId)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM edges WHERE snapshot_id = @snapshotId AND source_document_path IS NULL;";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            command.ExecuteNonQuery();
         }
 
         public void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds)

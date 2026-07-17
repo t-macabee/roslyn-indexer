@@ -450,6 +450,15 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
 
     private static void NormalizeEdges(List<EdgeRecord> edges)
     {
+        // Normalize snapshot ID so edges from different snapshots can be compared.
+        foreach (var edge in edges)
+        {
+            var field = typeof(EdgeRecord).GetField("<SnapshotId>k__BackingField",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            if (field != null)
+                field.SetValue(edge, string.Empty);
+        }
+
         edges.Sort((a, b) =>
         {
             int cmp = StringComparer.Ordinal.Compare(a.SourceSymbolId, b.SourceSymbolId);
