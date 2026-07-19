@@ -2,7 +2,7 @@ using Lurp.Storage;
 
 namespace Lurp.Handlers;
 
-public static class GetSourceHandler
+internal static class GetSourceHandler
 {
     public static void Run(string[] args)
     {

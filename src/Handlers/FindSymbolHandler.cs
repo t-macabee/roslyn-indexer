@@ -3,7 +3,7 @@ using Lurp.Storage;
 
 namespace Lurp.Handlers;
 
-public static class FindSymbolHandler
+internal static class FindSymbolHandler
 {
     public static void Run(string[] args)
     {

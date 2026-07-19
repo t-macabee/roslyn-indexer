@@ -3,7 +3,7 @@ using Lurp.Storage;
 
 namespace Lurp.Handlers;
 
-public static class SimulateRemoveHandler
+internal static class SimulateRemoveHandler
 {
     public static void Run(string[] args)
     {

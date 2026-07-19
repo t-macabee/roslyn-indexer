@@ -5,7 +5,7 @@ using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
-public static class ImpactHandler
+internal static class ImpactHandler
 {
     public static void Run(string[] args)
     {

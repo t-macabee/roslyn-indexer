@@ -1,8 +1,8 @@
 namespace Lurp.Adapters;
 
-public static class AdapterRegistry
+internal static class AdapterRegistry
 {
-    public static readonly IFrameworkAdapter[] All =
+    private static readonly IFrameworkAdapter[] All =
     [
         new AspNetCoreAdapter(),
         new DependencyInjectionAdapter(),

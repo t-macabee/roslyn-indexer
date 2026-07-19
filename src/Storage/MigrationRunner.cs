@@ -92,7 +92,7 @@ namespace Lurp.Storage
                 new Migration_011_SnapshotStatus(),
             };
 
-        public static void RunTest(string testDbPath)
+        internal static void RunTest(string testDbPath)
         {
             Console.WriteLine("Testing migration runner...");
 

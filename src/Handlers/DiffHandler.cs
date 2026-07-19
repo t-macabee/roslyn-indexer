@@ -4,7 +4,7 @@ using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
-public static class DiffHandler
+internal static class DiffHandler
 {
     public static void Run(string[] args)
     {

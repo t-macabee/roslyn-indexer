@@ -4,7 +4,7 @@ using Lurp.Storage;
 
 namespace Lurp.Handlers;
 
-public static class GetSymbolHandler
+internal static class GetSymbolHandler
 {
     public static void Run(string[] args)
     {

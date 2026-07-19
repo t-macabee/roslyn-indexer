@@ -4,7 +4,7 @@ using Lurp.Storage;
 
 namespace Lurp.Handlers;
 
-public static class SearchHandler
+internal static class SearchHandler
 {
     public static void Run(string[] args)
     {

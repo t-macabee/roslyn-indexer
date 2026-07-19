@@ -3,7 +3,7 @@ using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
-public static class IndexHandler
+internal static class IndexHandler
 {
     public static async Task Run(string[] args)
     {

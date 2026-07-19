@@ -5,7 +5,7 @@ using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
-public static class AuditHandler
+internal static class AuditHandler
 {
     public static void Run(string[] args)
     {

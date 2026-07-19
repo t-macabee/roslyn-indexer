@@ -3,7 +3,7 @@ using Lurp.Storage;
 
 namespace Lurp.Handlers;
 
-public static class SimulateRenameHandler
+internal static class SimulateRenameHandler
 {
     public static void Run(string[] args)
     {

@@ -6,7 +6,7 @@ using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
-public static class ContextHandler
+internal static class ContextHandler
 {
     public static void Run(string[] args)
     {

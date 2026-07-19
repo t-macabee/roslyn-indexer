@@ -1,6 +1,6 @@
 namespace Lurp.Workspace;
 
-public static class ExtractorConstants
+internal static class ExtractorConstants
 {
     public const string Version = "member-edges-v1";
 

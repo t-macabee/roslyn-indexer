@@ -1,6 +1,6 @@
 namespace Lurp.Workspace;
 
-public static class VersionConstants
+internal static class VersionConstants
 {
     public const int DatabaseSchemaVersion = 11;
     public const int OutputSchemaVersion = 2;
