@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
 
@@ -21,7 +22,7 @@ public static class SearchHandler
         var includeGenerated = args.Contains("--include-generated");
 
         int limit = 20;
-        if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, out limit))
+        if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit))
         {
             Console.Error.WriteLine("ERROR: --limit must be an integer.");
             Environment.Exit(1);

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage;
@@ -76,8 +77,8 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
                 changeType: reader.GetString(3),
                 symbolId: reader.GetString(4),
                 detailJson: reader.IsDBNull(5) ? null : reader.GetString(5),
-                createdAtUtc: DateTime.Parse(reader.GetString(6), null,
-                    System.Globalization.DateTimeStyles.RoundtripKind)));
+                createdAtUtc: DateTime.Parse(reader.GetString(6), CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind)));
         }
         return results;
     }

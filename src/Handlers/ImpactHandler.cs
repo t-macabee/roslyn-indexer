@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -26,7 +27,7 @@ public static class ImpactHandler
         var snapshotArg = GetArgValue(args, "--snapshot=");
         var maxDepthArg = GetArgValue(args, "--max-depth=");
         int maxDepth = 10;
-        if (!string.IsNullOrEmpty(maxDepthArg) && (!int.TryParse(maxDepthArg, out maxDepth) || maxDepth < 1))
+        if (!string.IsNullOrEmpty(maxDepthArg) && (!int.TryParse(maxDepthArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxDepth) || maxDepth < 1))
         {
             Console.Error.WriteLine("ERROR: --max-depth must be a positive integer.");
             Environment.Exit(1);

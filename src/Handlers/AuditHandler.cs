@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -20,7 +21,7 @@ public static class AuditHandler
         var fanOutThresholdArg = GetArgValue(args, "--fan-out-threshold=");
 
         int fanOutThreshold = 20;
-        if (!string.IsNullOrEmpty(fanOutThresholdArg) && !int.TryParse(fanOutThresholdArg, out fanOutThreshold))
+        if (!string.IsNullOrEmpty(fanOutThresholdArg) && !int.TryParse(fanOutThresholdArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out fanOutThreshold))
         {
             Console.Error.WriteLine("ERROR: --fan-out-threshold must be an integer.");
             Environment.Exit(1);

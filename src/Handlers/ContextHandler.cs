@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Lurp.Storage;
@@ -42,14 +43,14 @@ public static class ContextHandler
         };
 
         int budget = 8000;
-        if (!string.IsNullOrEmpty(budgetArg) && (!int.TryParse(budgetArg, out budget) || budget < 1))
+        if (!string.IsNullOrEmpty(budgetArg) && (!int.TryParse(budgetArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out budget) || budget < 1))
         {
             Console.Error.WriteLine("ERROR: --budget must be a positive integer.");
             Environment.Exit(1);
         }
 
         int maxHops = 3;
-        if (!string.IsNullOrEmpty(maxHopsArg) && (!int.TryParse(maxHopsArg, out maxHops) || maxHops < 1))
+        if (!string.IsNullOrEmpty(maxHopsArg) && (!int.TryParse(maxHopsArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxHops) || maxHops < 1))
         {
             Console.Error.WriteLine("ERROR: --max-hops must be a positive integer.");
             Environment.Exit(1);
@@ -58,7 +59,7 @@ public static class ContextHandler
         int? lineNumber = null;
         if (hasFile)
         {
-            if (!int.TryParse(lineArg, out var ln) || ln < 1)
+            if (!int.TryParse(lineArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ln) || ln < 1)
             {
                 Console.Error.WriteLine("ERROR: --line must be a positive integer.");
                 Environment.Exit(1);

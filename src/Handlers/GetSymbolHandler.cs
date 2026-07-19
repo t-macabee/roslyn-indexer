@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
 
@@ -81,7 +82,7 @@ public static class GetSymbolHandler
                     break;
                 case "surrounding":
                     isSurrounding = true;
-                    if (!string.IsNullOrEmpty(contextLinesArg) && int.TryParse(contextLinesArg, out var parsed))
+                    if (!string.IsNullOrEmpty(contextLinesArg) && int.TryParse(contextLinesArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
                         contextLines = parsed;
                     break;
                 default:

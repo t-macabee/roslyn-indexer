@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -201,8 +202,8 @@ public sealed class SnapshotStore : ISnapshotStore
         var solutionPath = reader.GetString(3);
         var sdkVersion = reader.IsDBNull(4) ? null : reader.GetString(4);
         var compilerVersion = reader.IsDBNull(5) ? null : reader.GetString(5);
-        var builtAtUtc = DateTime.Parse(reader.GetString(6), null,
-            System.Globalization.DateTimeStyles.RoundtripKind);
+        var builtAtUtc = DateTime.Parse(reader.GetString(6), CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind);
 
         var documents = new List<DocumentVersion>();
         using var docCommand = connection.CreateCommand();
