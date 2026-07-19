@@ -241,144 +241,85 @@ public sealed class SymbolExtractor
         var fullEnd = CharOffsetToByteOffset(sourceText, fullCharSpan.End, encoding);
         var full = new DeclarationSpan(fullStart, fullEnd);
 
-        DeclarationSpan name;
-        if (node is BaseTypeDeclarationSyntax typeDecl)
-        {
-            var idStart = CharOffsetToByteOffset(sourceText, typeDecl.Identifier.SpanStart, encoding);
-            var idEnd = CharOffsetToByteOffset(sourceText, typeDecl.Identifier.Span.End, encoding);
-            name = new DeclarationSpan(idStart, idEnd);
-        }
-        else if (node is MethodDeclarationSyntax methodDecl)
-        {
-            var idStart = CharOffsetToByteOffset(sourceText, methodDecl.Identifier.SpanStart, encoding);
-            var idEnd = CharOffsetToByteOffset(sourceText, methodDecl.Identifier.Span.End, encoding);
-            name = new DeclarationSpan(idStart, idEnd);
-        }
-        else if (node is ConstructorDeclarationSyntax ctorDecl)
-        {
-            var idStart = CharOffsetToByteOffset(sourceText, ctorDecl.Identifier.SpanStart, encoding);
-            var idEnd = CharOffsetToByteOffset(sourceText, ctorDecl.Identifier.Span.End, encoding);
-            name = new DeclarationSpan(idStart, idEnd);
-        }
-        else if (node is PropertyDeclarationSyntax propDecl)
-        {
-            var idStart = CharOffsetToByteOffset(sourceText, propDecl.Identifier.SpanStart, encoding);
-            var idEnd = CharOffsetToByteOffset(sourceText, propDecl.Identifier.Span.End, encoding);
-            name = new DeclarationSpan(idStart, idEnd);
-        }
-        else if (node is EventDeclarationSyntax eventDecl)
-        {
-            var idStart = CharOffsetToByteOffset(sourceText, eventDecl.Identifier.SpanStart, encoding);
-            var idEnd = CharOffsetToByteOffset(sourceText, eventDecl.Identifier.Span.End, encoding);
-            name = new DeclarationSpan(idStart, idEnd);
-        }
-        else if (node is VariableDeclaratorSyntax varDecl)
-        {
-            var idStart = CharOffsetToByteOffset(sourceText, varDecl.Identifier.SpanStart, encoding);
-            var idEnd = CharOffsetToByteOffset(sourceText, varDecl.Identifier.Span.End, encoding);
-            name = new DeclarationSpan(idStart, idEnd);
-        }
-        else if (node is EnumMemberDeclarationSyntax enumMember)
-        {
-            var idStart = CharOffsetToByteOffset(sourceText, enumMember.Identifier.SpanStart, encoding);
-            var idEnd = CharOffsetToByteOffset(sourceText, enumMember.Identifier.Span.End, encoding);
-            name = new DeclarationSpan(idStart, idEnd);
-        }
-        else
-        {
-            var tokens = node.ChildTokens().Where(t => t.IsKind(SyntaxKind.IdentifierToken) || t.IsKind(SyntaxKind.GlobalKeyword)).ToArray();
-            if (tokens.Length > 0)
-            {
-                var firstId = tokens[0];
-                name = new DeclarationSpan(CharOffsetToByteOffset(sourceText, firstId.SpanStart, encoding),
-                    CharOffsetToByteOffset(sourceText, firstId.Span.End, encoding));
-            }
-            else
-            {
-                name = full;
-            }
-        }
-
-        DeclarationSpan body;
-        int signatureCharEnd;
-
-        if (node is MethodDeclarationSyntax method && method.Body != null)
-        {
-            body = SpanFromCharSpan(sourceText, method.Body.Span, encoding);
-            signatureCharEnd = method.Body.SpanStart;
-        }
-        else if (node is MethodDeclarationSyntax methodExpr && methodExpr.ExpressionBody != null)
-        {
-            body = SpanFromCharSpan(sourceText, methodExpr.ExpressionBody.Span, encoding);
-            signatureCharEnd = methodExpr.ExpressionBody.SpanStart;
-        }
-        else if (node is MethodDeclarationSyntax methodAbstract && methodAbstract.Body == null && methodAbstract.ExpressionBody == null)
-        {
-            body = new DeclarationSpan(null, null);
-            signatureCharEnd = fullCharSpan.End;
-        }
-        else if (node is PropertyDeclarationSyntax prop && prop.AccessorList != null)
-        {
-            body = new DeclarationSpan(null, null);
-            signatureCharEnd = fullCharSpan.End;
-        }
-        else if (node is PropertyDeclarationSyntax propExpr && propExpr.ExpressionBody != null)
-        {
-            body = SpanFromCharSpan(sourceText, propExpr.ExpressionBody.Span, encoding);
-            signatureCharEnd = propExpr.ExpressionBody.SpanStart;
-        }
-        else if (node is BaseTypeDeclarationSyntax typeDecl2)
-        {
-            body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, typeDecl2.OpenBraceToken.SpanStart, encoding),
-                CharOffsetToByteOffset(sourceText, typeDecl2.CloseBraceToken.Span.End, encoding));
-            signatureCharEnd = typeDecl2.OpenBraceToken.SpanStart;
-        }
-        else if (node is BaseFieldDeclarationSyntax fieldDecl)
-        {
-            body = new DeclarationSpan(null, null);
-            signatureCharEnd = fullCharSpan.End;
-        }
-        else if (node is EventDeclarationSyntax eventDecl2 && eventDecl2.AccessorList != null)
-        {
-            body = new DeclarationSpan(null, null);
-            signatureCharEnd = fullCharSpan.End;
-        }
-        else if (node is EventFieldDeclarationSyntax eventField)
-        {
-            body = new DeclarationSpan(null, null);
-            signatureCharEnd = fullCharSpan.End;
-        }
-        else if (node is EnumDeclarationSyntax enumDecl)
-        {
-            body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, enumDecl.OpenBraceToken.SpanStart, encoding),
-                CharOffsetToByteOffset(sourceText, enumDecl.CloseBraceToken.Span.End, encoding));
-            signatureCharEnd = enumDecl.OpenBraceToken.SpanStart;
-        }
-        else if (node is DelegateDeclarationSyntax delegateDecl)
-        {
-            body = new DeclarationSpan(null, null);
-            signatureCharEnd = fullCharSpan.End;
-        }
-        else if (node is NamespaceDeclarationSyntax nsDecl)
-        {
-            body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, nsDecl.OpenBraceToken.SpanStart, encoding),
-                CharOffsetToByteOffset(sourceText, nsDecl.CloseBraceToken.Span.End, encoding));
-            signatureCharEnd = nsDecl.OpenBraceToken.SpanStart;
-        }
-        else if (node is FileScopedNamespaceDeclarationSyntax fileScopedNs)
-        {
-            body = new DeclarationSpan(null, null);
-            signatureCharEnd = fullCharSpan.End;
-        }
-        else
-        {
-            body = new DeclarationSpan(null, null);
-            signatureCharEnd = fullCharSpan.End;
-        }
-
-        var signature = new DeclarationSpan(fullStart,CharOffsetToByteOffset(sourceText, signatureCharEnd, encoding));
+        var name = ComputeNameSpan(node, sourceText, encoding, full);
+        var (body, signatureCharEnd) = ComputeBodyAndSignatureEnd(node, sourceText, encoding, fullCharSpan);
+        var signature = new DeclarationSpan(fullStart, CharOffsetToByteOffset(sourceText, signatureCharEnd, encoding));
 
         return (full, signature, body, name);
+    }
+
+    private static DeclarationSpan ComputeNameSpan(SyntaxNode node, string sourceText, Encoding encoding, DeclarationSpan full)
+    {
+        SyntaxToken? GetIdentifier(SyntaxNode n) => n switch
+        {
+            BaseTypeDeclarationSyntax t => t.Identifier,
+            MethodDeclarationSyntax m => m.Identifier,
+            ConstructorDeclarationSyntax c => c.Identifier,
+            PropertyDeclarationSyntax p => p.Identifier,
+            EventDeclarationSyntax e => e.Identifier,
+            VariableDeclaratorSyntax v => v.Identifier,
+            EnumMemberDeclarationSyntax em => em.Identifier,
+            _ => null
+        };
+
+        var idToken = GetIdentifier(node);
+        if (idToken != null)
+        {
+            var idStart = CharOffsetToByteOffset(sourceText, idToken.Value.SpanStart, encoding);
+            var idEnd = CharOffsetToByteOffset(sourceText, idToken.Value.Span.End, encoding);
+            return new DeclarationSpan(idStart, idEnd);
+        }
+
+        var tokens = node.ChildTokens().Where(t => t.IsKind(SyntaxKind.IdentifierToken) || t.IsKind(SyntaxKind.GlobalKeyword)).ToArray();
+        if (tokens.Length > 0)
+        {
+            var firstId = tokens[0];
+            return new DeclarationSpan(CharOffsetToByteOffset(sourceText, firstId.SpanStart, encoding),
+                CharOffsetToByteOffset(sourceText, firstId.Span.End, encoding));
+        }
+
+        return full;
+    }
+
+    private static (DeclarationSpan Body, int SignatureCharEnd) ComputeBodyAndSignatureEnd(SyntaxNode node, string sourceText, Encoding encoding, Microsoft.CodeAnalysis.Text.TextSpan fullCharSpan)
+    {
+        if (node is MethodDeclarationSyntax method && method.Body != null)
+            return (SpanFromCharSpan(sourceText, method.Body.Span, encoding), method.Body.SpanStart);
+
+        if (node is MethodDeclarationSyntax methodExpr && methodExpr.ExpressionBody != null)
+            return (SpanFromCharSpan(sourceText, methodExpr.ExpressionBody.Span, encoding), methodExpr.ExpressionBody.SpanStart);
+
+        if (node is MethodDeclarationSyntax && node is MethodDeclarationSyntax { Body: null, ExpressionBody: null })
+            return (new DeclarationSpan(null, null), fullCharSpan.End);
+
+        if (node is PropertyDeclarationSyntax prop && prop.AccessorList != null)
+            return (new DeclarationSpan(null, null), fullCharSpan.End);
+
+        if (node is PropertyDeclarationSyntax propExpr && propExpr.ExpressionBody != null)
+            return (SpanFromCharSpan(sourceText, propExpr.ExpressionBody.Span, encoding), propExpr.ExpressionBody.SpanStart);
+
+        if (node is BaseTypeDeclarationSyntax typeDecl)
+        {
+            var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, typeDecl.OpenBraceToken.SpanStart, encoding),
+                CharOffsetToByteOffset(sourceText, typeDecl.CloseBraceToken.Span.End, encoding));
+            return (body, typeDecl.OpenBraceToken.SpanStart);
+        }
+
+        if (node is EnumDeclarationSyntax enumDecl)
+        {
+            var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, enumDecl.OpenBraceToken.SpanStart, encoding),
+                CharOffsetToByteOffset(sourceText, enumDecl.CloseBraceToken.Span.End, encoding));
+            return (body, enumDecl.OpenBraceToken.SpanStart);
+        }
+
+        if (node is NamespaceDeclarationSyntax nsDecl)
+        {
+            var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, nsDecl.OpenBraceToken.SpanStart, encoding),
+                CharOffsetToByteOffset(sourceText, nsDecl.CloseBraceToken.Span.End, encoding));
+            return (body, nsDecl.OpenBraceToken.SpanStart);
+        }
+
+        return (new DeclarationSpan(null, null), fullCharSpan.End);
     }
 
     private static DeclarationSpan SpanFromCharSpan(string sourceText, Microsoft.CodeAnalysis.Text.TextSpan charSpan, Encoding encoding)

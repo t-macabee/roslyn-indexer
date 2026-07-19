@@ -47,29 +47,9 @@ public sealed class TestAdapter : IFrameworkAdapter
                         continue;
 
                     var semanticModel = GetOrCreateSemanticModel(methodSyntax.SyntaxTree, semanticModelCache, compilation);
-
                     var referencedSymbols = new HashSet<string>();
 
-                    foreach (var invocation in bodySyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
-                    {
-                        var symbolInfo = semanticModel.GetSymbolInfo(invocation);
-                        if (symbolInfo.Symbol != null)
-                            TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges,testMethodId, snapshotId, referencedSymbols);
-                    }
-
-                    foreach (var creation in bodySyntax.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
-                    {
-                        var symbolInfo = semanticModel.GetSymbolInfo(creation);
-                        if (symbolInfo.Symbol != null)
-                            TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges,testMethodId, snapshotId, referencedSymbols);
-                    }
-
-                    foreach (var memberAccess in bodySyntax.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
-                    {
-                        var symbolInfo = semanticModel.GetSymbolInfo(memberAccess);
-                        if (symbolInfo.Symbol != null)
-                            TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges,testMethodId, snapshotId, referencedSymbols);
-                    }
+                    CollectTestReferences(bodySyntax, semanticModel, assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols);
                 }
             }
         }
@@ -182,6 +162,32 @@ public sealed class TestAdapter : IFrameworkAdapter
         var types = new List<INamedTypeSymbol>();
         CollectTypes(ns, types);
         return types;
+    }
+
+    private static void CollectTestReferences(SyntaxNode bodySyntax, SemanticModel semanticModel, string assemblyIdentity,
+        HashSet<(string source, string target, string kind)> seen, List<EdgeRecord> edges,
+        string testMethodId, string snapshotId, HashSet<string> referencedSymbols)
+    {
+        foreach (var invocation in bodySyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            var symbolInfo = semanticModel.GetSymbolInfo(invocation);
+            if (symbolInfo.Symbol != null)
+                TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols);
+        }
+
+        foreach (var creation in bodySyntax.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
+        {
+            var symbolInfo = semanticModel.GetSymbolInfo(creation);
+            if (symbolInfo.Symbol != null)
+                TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols);
+        }
+
+        foreach (var memberAccess in bodySyntax.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
+        {
+            var symbolInfo = semanticModel.GetSymbolInfo(memberAccess);
+            if (symbolInfo.Symbol != null)
+                TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols);
+        }
     }
 
     private static void CollectTypes(INamespaceSymbol ns, List<INamedTypeSymbol> types)

@@ -32,59 +32,25 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         var previousSnapshotId = previousManifest.SnapshotId;
         var previousRichManifest = SnapshotManifest.FromStorageManifest(previousManifest);
 
-        Console.Write("Hashing documents and detecting changes... ");
-
-        var docChanges = DetectChanges(workspaceInfo, previousRichManifest);
-        var changedDocs = docChanges.Where(c => c.ChangeKind != DocumentChangeKind.Unchanged).ToList();
-        var changedPaths = changedDocs.Select(c => c.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        Console.WriteLine($"done ({changedDocs.Count} changed, {docChanges.Count - changedDocs.Count} unchanged).");
-
+        var (changedDocs, changedPaths) = DetectAndLogChanges(workspaceInfo, previousRichManifest);
         if (changedDocs.Count == 0)
-        {
-            Console.WriteLine("No changes detected. Skipping incremental index.");
             return new IncrementalResult(NewSnapshotId: previousSnapshotId, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: 0, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0);
-        }
-
-        foreach (var change in changedDocs)
-        {
-            Console.WriteLine($"  {change.ChangeKind}: {change.RelativePath}");
-        }
 
         Console.Write("Identifying affected projects... ");
-
         var affectedProjects = IdentifyAffectedProjects(solution, changedPaths);
-
         Console.WriteLine($"{affectedProjects.Count} affected: {string.Join(", ", affectedProjects)}");
 
         var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
         var oldDocVersionIdSet = new HashSet<string>(oldDocVersionIds);
 
-        Console.Write("Loading compilations for affected projects... ");
-
-        var affectedCompilations = new Dictionary<string, Compilation>(StringComparer.Ordinal);
-
-        foreach (var project in solution.Projects)
-        {
-            if (!affectedProjects.Contains(project.Name))
-                continue;
-
-            var compilation = await project.GetCompilationAsync();
-
-            if (compilation != null)
-                affectedCompilations[project.Name] = compilation;
-        }
-
-        Console.WriteLine($"done ({affectedCompilations.Count} compilations).");
+        var affectedCompilations = await LoadAffectedCompilationsAsync(solution, affectedProjects);
 
         var snapshotId = SnapshotId.New();
         var newSnapshotIdStr = snapshotId.ToString();
         var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId));
 
         Console.Write("Saving new snapshot manifest... ");
-
         newManifest.Save(_store, workspaceInfo.DocumentContents, _jsonExportPath);
-
         Console.WriteLine("done.");
 
         _store.MarkSnapshotInProgress(newSnapshotIdStr);
@@ -95,98 +61,12 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
 
         try
         {
-            Console.Write("Preparing snapshot data (copy forward, remove stale)... ");
+            PrepareSnapshotData(solution, previousSnapshotId, newSnapshotIdStr, affectedProjects, affectedCompilations, oldDocVersionIdSet);
 
-            _store.CopyEdgesToSnapshot(previousSnapshotId, newSnapshotIdStr);
-            _store.CopySnapshotDiagnostics(previousSnapshotId, newSnapshotIdStr);
+            (totalDeclarations, totalEdges, totalDiagnostics) =
+                ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations);
 
-            var affectedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var project in solution.Projects)
-            {
-                if (!affectedProjects.Contains(project.Name))
-                    continue;
-
-                foreach (var doc in project.Documents)
-                {
-                    if (doc.FilePath == null)
-                        continue;
-
-                    affectedProjectPaths.Add(GetRelativePath(doc.FilePath, _gitRoot));
-                }
-            }
-
-            if (affectedProjectPaths.Count > 0)
-                _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, affectedProjectPaths);
-
-            var affectedAssemblyIdentities = affectedCompilations.Values
-                .Select(c => c.Assembly.Identity.GetDisplayName())
-                .ToList();
-
-            _store.DeleteEdgesWithNullDocumentPathForAssemblies(newSnapshotIdStr, affectedAssemblyIdentities);
-
-            if (oldDocVersionIdSet.Count > 0)
-                _store.DeleteDeclarationsByDocumentVersionIds(oldDocVersionIdSet);
-
-            _store.CopySnapshotSymbols(previousSnapshotId, newSnapshotIdStr);
-            _store.DeleteDiagnosticsByProjectNames(newSnapshotIdStr, affectedProjects);
-
-            Console.WriteLine("done.");
-            Console.WriteLine("Extracting replacement facts for affected projects...");
-
-            foreach (var (projectName, compilation) in affectedCompilations)
-            {
-                Console.Write($"  [{projectName}] ");
-
-                var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, _skipAdapters, logWarning: msg => Console.Error.Write($"  WARNING: {msg} "), logError: msg => Console.Error.Write($"  ERROR: {msg} "));
-
-                _store.SaveDeclarations(newSnapshotIdStr, result.Declarations);
-
-                totalDeclarations += result.Declarations.Count;
-
-                _store.SaveEdges(newSnapshotIdStr, result.Edges);
-
-                totalEdges += result.Edges.Count;
-
-                _store.SaveDiagnostics(newSnapshotIdStr, result.Diagnostics);
-
-                totalDiagnostics += result.Diagnostics.Count;
-
-                Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
-            }
-
-            Console.Write("Updating cross-document edges... ");
-
-            var crossDocEdgesProcessed = await UpdateCrossDocumentEdgesAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects);
-
-            totalEdges += crossDocEdgesProcessed;
-
-            Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
-            Console.Write("Rebuilding FTS5 search index... ");
-
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-
-            _store.BuildSearchIndex(newSnapshotIdStr);
-
-            sw.Stop();
-
-            Console.WriteLine($"done ({sw.ElapsedMilliseconds} ms).");
-            Console.Write("Computing semantic diff from previous snapshot... ");
-
-            try
-            {
-                var differ = new SemanticDiffer(_store);
-                var diffChanges = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr);
-
-                _store.SaveSemanticChanges(previousSnapshotId, newSnapshotIdStr, diffChanges);
-                Console.WriteLine($"done ({diffChanges.Count} changes).");
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"WARNING: Semantic diff failed: {ex.Message}");
-            }
-
-            _store.MarkSnapshotComplete(newSnapshotIdStr);
+            totalEdges += await FinalizeSnapshotAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects);
         }
         catch (Exception ex)
         {
@@ -203,6 +83,133 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         Console.WriteLine($"  Diagnostics:       {totalDiagnostics}");
 
         return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: totalDeclarations, EdgesExtracted: totalEdges, DiagnosticsExtracted: totalDiagnostics);
+    }
+
+    private (List<DocumentChangeInfo> ChangedDocs, HashSet<string> ChangedPaths) DetectAndLogChanges(WorkspaceInfo workspaceInfo, SnapshotManifest previousRichManifest)
+    {
+        Console.Write("Hashing documents and detecting changes... ");
+        var docChanges = DetectChanges(workspaceInfo, previousRichManifest);
+        var changedDocs = docChanges.Where(c => c.ChangeKind != DocumentChangeKind.Unchanged).ToList();
+        var changedPaths = changedDocs.Select(c => c.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Console.WriteLine($"done ({changedDocs.Count} changed, {docChanges.Count - changedDocs.Count} unchanged).");
+
+        if (changedDocs.Count == 0)
+        {
+            Console.WriteLine("No changes detected. Skipping incremental index.");
+        }
+        else
+        {
+            foreach (var change in changedDocs)
+                Console.WriteLine($"  {change.ChangeKind}: {change.RelativePath}");
+        }
+
+        return (changedDocs, changedPaths);
+    }
+
+    private async Task<Dictionary<string, Compilation>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects)
+    {
+        Console.Write("Loading compilations for affected projects... ");
+        var result = new Dictionary<string, Compilation>(StringComparer.Ordinal);
+        foreach (var project in solution.Projects)
+        {
+            if (!affectedProjects.Contains(project.Name))
+                continue;
+            var compilation = await project.GetCompilationAsync();
+            if (compilation != null)
+                result[project.Name] = compilation;
+        }
+        Console.WriteLine($"done ({result.Count} compilations).");
+        return result;
+    }
+
+    private void PrepareSnapshotData(Solution solution, string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, Dictionary<string, Compilation> affectedCompilations, HashSet<string> oldDocVersionIdSet)
+    {
+        Console.Write("Preparing snapshot data (copy forward, remove stale)... ");
+
+        _store.CopyEdgesToSnapshot(previousSnapshotId, newSnapshotIdStr);
+        _store.CopySnapshotDiagnostics(previousSnapshotId, newSnapshotIdStr);
+
+        var affectedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in solution.Projects)
+        {
+            if (!affectedProjects.Contains(project.Name))
+                continue;
+            foreach (var doc in project.Documents)
+            {
+                if (doc.FilePath == null) continue;
+                affectedProjectPaths.Add(GetRelativePath(doc.FilePath, _gitRoot));
+            }
+        }
+
+        if (affectedProjectPaths.Count > 0)
+            _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, affectedProjectPaths);
+
+        var affectedAssemblyIdentities = affectedCompilations.Values
+            .Select(c => c.Assembly.Identity.GetDisplayName()).ToList();
+        _store.DeleteEdgesWithNullDocumentPathForAssemblies(newSnapshotIdStr, affectedAssemblyIdentities);
+
+        if (oldDocVersionIdSet.Count > 0)
+            _store.DeleteDeclarationsByDocumentVersionIds(oldDocVersionIdSet);
+
+        _store.CopySnapshotSymbols(previousSnapshotId, newSnapshotIdStr);
+        _store.DeleteDiagnosticsByProjectNames(newSnapshotIdStr, affectedProjects);
+
+        Console.WriteLine("done.");
+    }
+
+    private (int Declarations, int Edges, int Diagnostics) ExtractReplacementFacts(
+        WorkspaceInfo workspaceInfo, string newSnapshotIdStr, Dictionary<string, Compilation> affectedCompilations)
+    {
+        Console.WriteLine("Extracting replacement facts for affected projects...");
+        int totalDecl = 0, totalEdge = 0, totalDiag = 0;
+
+        foreach (var (projectName, compilation) in affectedCompilations)
+        {
+            Console.Write($"  [{projectName}] ");
+            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, _skipAdapters,
+                logWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
+                logError: msg => Console.Error.Write($"  ERROR: {msg} "));
+
+            _store.SaveDeclarations(newSnapshotIdStr, result.Declarations);
+            totalDecl += result.Declarations.Count;
+            _store.SaveEdges(newSnapshotIdStr, result.Edges);
+            totalEdge += result.Edges.Count;
+            _store.SaveDiagnostics(newSnapshotIdStr, result.Diagnostics);
+            totalDiag += result.Diagnostics.Count;
+
+            Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
+        }
+
+        return (totalDecl, totalEdge, totalDiag);
+    }
+
+    private async Task<int> FinalizeSnapshotAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotIdStr, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> affectedProjects)
+    {
+        Console.Write("Updating cross-document edges... ");
+        var crossDocEdgesProcessed = await UpdateCrossDocumentEdgesAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects);
+        Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
+
+        Console.Write("Rebuilding FTS5 search index... ");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        _store.BuildSearchIndex(newSnapshotIdStr);
+        sw.Stop();
+        Console.WriteLine($"done ({sw.ElapsedMilliseconds} ms).");
+
+        Console.Write("Computing semantic diff from previous snapshot... ");
+        try
+        {
+            var differ = new SemanticDiffer(_store);
+            var diffChanges = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr);
+            _store.SaveSemanticChanges(previousSnapshotId, newSnapshotIdStr, diffChanges);
+            Console.WriteLine($"done ({diffChanges.Count} changes).");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"WARNING: Semantic diff failed: {ex.Message}");
+        }
+
+        _store.MarkSnapshotComplete(newSnapshotIdStr);
+        return crossDocEdgesProcessed;
     }
 
     private static List<DocumentChangeInfo> DetectChanges(WorkspaceInfo workspaceInfo, SnapshotManifest previousManifest)
@@ -270,38 +277,45 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
 
     private async Task<int> UpdateCrossDocumentEdgesAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> alreadyProcessedProjects)
     {
-
-        var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
-
-        if (oldDocVersionIds.Count == 0)
+        var affectedPaths = FindAffectedDocPathsForCrossDocEdges(previousSnapshotId, changedPaths);
+        if (affectedPaths.Count == 0)
             return 0;
+
+        var affectedProjectNames = ResolveCrossDocProjectNames(solution, affectedPaths, alreadyProcessedProjects);
+        if (affectedProjectNames.Count == 0)
+            return 0;
+
+        return await ProcessCrossDocCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames);
+    }
+
+    private HashSet<string> FindAffectedDocPathsForCrossDocEdges(string previousSnapshotId, HashSet<string> changedPaths)
+    {
+        var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
+        if (oldDocVersionIds.Count == 0)
+            return new HashSet<string>();
 
         var changedSymbolIds = _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, oldDocVersionIds);
-
         if (changedSymbolIds.Count == 0)
-            return 0;
+            return new HashSet<string>();
 
         var affectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
         foreach (var symbolId in changedSymbolIds)
         {
-
             var incomingEdges = _store.GetIncomingEdges(previousSnapshotId, symbolId);
-
             foreach (var edge in incomingEdges)
             {
                 if (edge.SourceDocumentPath != null && !changedPaths.Contains(edge.SourceDocumentPath))
                     affectedPaths.Add(edge.SourceDocumentPath);
             }
         }
+        return affectedPaths;
+    }
 
-        if (affectedPaths.Count == 0)
-            return 0;
-
+    private HashSet<string> ResolveCrossDocProjectNames(Solution solution, HashSet<string> affectedPaths, HashSet<string> alreadyProcessedProjects)
+    {
         Console.WriteLine($"  ({affectedPaths.Count} documents need cross-document edge refresh)");
 
         var affectedProjectNames = new HashSet<string>(StringComparer.Ordinal);
-
         foreach (var project in solution.Projects)
         {
             foreach (var doc in project.Documents)
@@ -317,65 +331,65 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         }
 
         affectedProjectNames.ExceptWith(alreadyProcessedProjects);
+        return affectedProjectNames;
+    }
 
-        if (affectedProjectNames.Count == 0)
-            return 0;
-
-        var affectedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var project in solution.Projects)
-        {
-            if (!affectedProjectNames.Contains(project.Name))
-                continue;
-
-            foreach (var doc in project.Documents)
-            {
-                if (doc.FilePath == null) continue;
-                affectedProjectPaths.Add(GetRelativePath(doc.FilePath, _gitRoot));
-            }
-        }
-
+    private async Task<int> ProcessCrossDocCompilationsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedProjectNames)
+    {
+        var affectedProjectPaths = CollectProjectDocPaths(solution, affectedProjectNames);
         _store.DeleteEdgesByDocumentPaths(newSnapshotId, affectedProjectPaths);
 
-        var crossDocCompilations = new Dictionary<string, Compilation>(StringComparer.Ordinal);
-
-        foreach (var project in solution.Projects)
-        {
-            if (!affectedProjectNames.Contains(project.Name))
-                continue;
-
-            var compilation = await project.GetCompilationAsync();
-
-            if (compilation != null)
-                crossDocCompilations[project.Name] = compilation;
-        }
-
+        var crossDocCompilations = await LoadCrossDocCompilationsAsync(solution, affectedProjectNames);
         var crossDocAssemblyIdentities = crossDocCompilations.Values
-            .Select(c => c.Assembly.Identity.GetDisplayName())
-            .ToList();
-
+            .Select(c => c.Assembly.Identity.GetDisplayName()).ToList();
         _store.DeleteEdgesWithNullDocumentPathForAssemblies(newSnapshotId, crossDocAssemblyIdentities);
 
         int totalEdges = 0;
-
         foreach (var project in solution.Projects)
         {
             if (!affectedProjectNames.Contains(project.Name))
                 continue;
-
             if (!crossDocCompilations.TryGetValue(project.Name, out var compilation))
                 continue;
 
-            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, _skipAdapters, logWarning: msg => Console.Error.Write($"  WARNING: {msg} "), logError: msg => Console.Error.Write($"  ERROR: {msg} "));
-
+            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, _skipAdapters,
+                logWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
+                logError: msg => Console.Error.Write($"  ERROR: {msg} "));
             _store.SaveEdges(newSnapshotId, result.Edges);
-
             totalEdges += result.Edges.Count;
-
             Console.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");
         }
-
         return totalEdges;
+    }
+
+    private HashSet<string> CollectProjectDocPaths(Solution solution, HashSet<string> projectNames)
+    {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in solution.Projects)
+        {
+            if (!projectNames.Contains(project.Name))
+                continue;
+            foreach (var doc in project.Documents)
+            {
+                if (doc.FilePath == null) continue;
+                paths.Add(GetRelativePath(doc.FilePath, _gitRoot));
+            }
+        }
+        return paths;
+    }
+
+    private async Task<Dictionary<string, Compilation>> LoadCrossDocCompilationsAsync(Solution solution, HashSet<string> projectNames)
+    {
+        var compilations = new Dictionary<string, Compilation>(StringComparer.Ordinal);
+        foreach (var project in solution.Projects)
+        {
+            if (!projectNames.Contains(project.Name))
+                continue;
+            var compilation = await project.GetCompilationAsync();
+            if (compilation != null)
+                compilations[project.Name] = compilation;
+        }
+        return compilations;
     }
 
     private static string GetRelativePath(string fullPath, string gitRoot)

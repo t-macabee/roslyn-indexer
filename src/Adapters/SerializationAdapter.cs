@@ -36,48 +36,48 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
             foreach (var typeDecl in tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>())
             {
-                foreach (var attrList in typeDecl.AttributeLists)
-                {
-                    foreach (var attr in attrList.Attributes)
-                    {
-                        var attrName = GetAttributeName(attr);
-                        if (attrName != "JsonSerializable")
-                            continue;
-
-                        if (attr.ArgumentList != null)
-                        {
-                            foreach (var arg in attr.ArgumentList.Arguments)
-                            {
-                                if (arg.Expression is TypeOfExpressionSyntax typeofExpr)
-                                {
-                                    var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
-                                    if (typeInfo.Type is INamedTypeSymbol serializableType)
-                                    {
-                                        var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl);
-                                        if (typeSymbol != null)
-                                        {
-                                            var sourceId = MakeSymbolId(typeSymbol, assemblyIdentity);
-                                            var targetId = MakeSymbolId(serializableType, assemblyIdentity);
-                                            if (sourceId != null && targetId != null)
-                                            {
-                                                var key = (sourceId, targetId, EdgeKind.References.ToString());
-                                                if (seen.Add(key))
-                                                {
-                                                    edges.Add(MakeEdge(sourceId, targetId, EdgeKind.References.ToString(),
-                                                        snapshotId));
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                ProcessJsonSerializableType(typeDecl, semanticModel, assemblyIdentity, snapshotId, edges, seen);
             }
         }
 
         return edges;
+    }
+
+    private static void ProcessJsonSerializableType(TypeDeclarationSyntax typeDecl, SemanticModel semanticModel,
+        string assemblyIdentity, string snapshotId, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    {
+        foreach (var attrList in typeDecl.AttributeLists)
+        {
+            foreach (var attr in attrList.Attributes)
+            {
+                var attrName = GetAttributeName(attr);
+                if (attrName != "JsonSerializable" || attr.ArgumentList == null)
+                    continue;
+
+                foreach (var arg in attr.ArgumentList.Arguments)
+                {
+                    if (arg.Expression is not TypeOfExpressionSyntax typeofExpr)
+                        continue;
+
+                    var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
+                    if (typeInfo.Type is not INamedTypeSymbol serializableType)
+                        continue;
+
+                    var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl);
+                    if (typeSymbol == null)
+                        continue;
+
+                    var sourceId = MakeSymbolId(typeSymbol, assemblyIdentity);
+                    var targetId = MakeSymbolId(serializableType, assemblyIdentity);
+                    if (sourceId != null && targetId != null)
+                    {
+                        var key = (sourceId, targetId, EdgeKind.References.ToString());
+                        if (seen.Add(key))
+                            edges.Add(MakeEdge(sourceId, targetId, EdgeKind.References.ToString(), snapshotId));
+                    }
+                }
+            }
+        }
     }
 
     private static void ProcessMemberWithSerializationAttrs(SyntaxNode memberNode,SyntaxList<AttributeListSyntax> attributeLists,SemanticModel semanticModel,string assemblyIdentity,string snapshotId,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)

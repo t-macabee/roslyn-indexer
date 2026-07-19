@@ -22,81 +22,66 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 continue;
 
             var controllerId = MakeSymbolId(type, assemblyIdentity);
-
             if (controllerId == null)
                 continue;
 
             foreach (var member in type.GetMembers())
             {
-                if (member is not IMethodSymbol method)
+                if (member is not IMethodSymbol method || method.MethodKind != MethodKind.Ordinary)
                     continue;
 
-                if (method.MethodKind != MethodKind.Ordinary)
-                    continue;
-
-                var methodId = MakeSymbolId(method, assemblyIdentity);
-
-                if (methodId == null)
-                    continue;
-
-                var declaresKey = (controllerId, methodId, EdgeKind.Declares.ToString());
-
-                if (seen.Add(declaresKey))
-                {
-                    edges.Add(MakeEdge(controllerId, methodId, EdgeKind.Declares.ToString(), snapshotId, assemblyIdentity));
-                }
-
-                var routeTemplate = ExtractRouteTemplate(type, method);
-
-                if (routeTemplate != null)
-                {
-                    var routeSourceId = $"route://{routeTemplate}";
-                    var routeKey = (routeSourceId, methodId, EdgeKind.RoutesTo.ToString());
-
-                    if (seen.Add(routeKey))
-                    {
-                        edges.Add(new EdgeRecord(sourceSymbolId: routeSourceId, targetSymbolId: methodId, kind: EdgeKind.RoutesTo.ToString(), provenance: "framework_derived", snapshotId: snapshotId, extractorVersion: Version));
-                    }
-                }
-
-                if (!method.ReturnsVoid && method.ReturnType != null)
-                {
-                    var returnTypeId = MakeSymbolId(method.ReturnType, assemblyIdentity);
-
-                    if (returnTypeId != null)
-                    {
-                        var retKey = (methodId, returnTypeId, EdgeKind.Returns.ToString());
-
-                        if (seen.Add(retKey))
-                        {
-                            edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(), snapshotId, assemblyIdentity));
-                        }
-                    }
-                }
-
-                foreach (var param in method.Parameters)
-                {
-                    var hasFromServices = param.GetAttributes().Any(a => a.AttributeClass?.Name is "FromServicesAttribute" or "FromServices");
-
-                    if (!hasFromServices)
-                        continue;
-
-                    var paramTypeId = MakeSymbolId(param.Type, assemblyIdentity);
-
-                    if (paramTypeId == null)
-                        continue;
-
-                    var refKey = (methodId, paramTypeId, EdgeKind.References.ToString());
-
-                    if (seen.Add(refKey))
-                    {
-                        edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(), snapshotId, assemblyIdentity));
-                    }
-                }
+                ProcessControllerAction(method, controllerId, assemblyIdentity, snapshotId, edges, seen);
             }
         }
 
         return edges;
+    }
+
+    private void ProcessControllerAction(IMethodSymbol method, string controllerId, string assemblyIdentity, string snapshotId,
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    {
+        var methodId = MakeSymbolId(method, assemblyIdentity);
+        if (methodId == null)
+            return;
+
+        var declaresKey = (controllerId, methodId, EdgeKind.Declares.ToString());
+        if (seen.Add(declaresKey))
+            edges.Add(MakeEdge(controllerId, methodId, EdgeKind.Declares.ToString(), snapshotId, assemblyIdentity));
+
+        var routeTemplate = ExtractRouteTemplate((INamedTypeSymbol)method.ContainingType, method);
+        if (routeTemplate != null)
+        {
+            var routeSourceId = $"route://{routeTemplate}";
+            var routeKey = (routeSourceId, methodId, EdgeKind.RoutesTo.ToString());
+            if (seen.Add(routeKey))
+                edges.Add(new EdgeRecord(sourceSymbolId: routeSourceId, targetSymbolId: methodId, kind: EdgeKind.RoutesTo.ToString(), provenance: "framework_derived", snapshotId: snapshotId, extractorVersion: Version));
+        }
+
+        if (!method.ReturnsVoid && method.ReturnType != null)
+        {
+            var returnTypeId = MakeSymbolId(method.ReturnType, assemblyIdentity);
+            if (returnTypeId != null)
+            {
+                var retKey = (methodId, returnTypeId, EdgeKind.Returns.ToString());
+                if (seen.Add(retKey))
+                    edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(), snapshotId, assemblyIdentity));
+            }
+        }
+
+        foreach (var param in method.Parameters)
+        {
+            var hasFromServices = param.GetAttributes().Any(a => a.AttributeClass?.Name is "FromServicesAttribute" or "FromServices");
+            if (!hasFromServices)
+                continue;
+
+            var paramTypeId = MakeSymbolId(param.Type, assemblyIdentity);
+            if (paramTypeId == null)
+                continue;
+
+            var refKey = (methodId, paramTypeId, EdgeKind.References.ToString());
+            if (seen.Add(refKey))
+                edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(), snapshotId, assemblyIdentity));
+        }
     }
 
     private static bool IsController(INamedTypeSymbol type)
