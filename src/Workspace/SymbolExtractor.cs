@@ -221,15 +221,20 @@ public sealed class SymbolExtractor
                 generatorIdentity = DeriveGeneratorIdentity(genDocContent.Content);
             }
 
-            results.Add(new SymbolDeclaration(symbolId: symbolId,kind: kind,documentVersionId: versionId.ToString(),
-                fullSpan: fullSpan,
-                signatureSpan: signatureSpan,
-                bodySpan: bodySpan,
-                nameSpan: nameSpan,
-                isPartial: isPartial,
-                metadataJson: metadataJson,
-                isGenerated: isGenerated,
-                generatorIdentity: generatorIdentity));
+            results.Add(new SymbolDeclaration
+            {
+                SymbolId = symbolId,
+                Kind = kind,
+                DocumentVersionId = versionId.ToString(),
+                FullSpan = fullSpan,
+                SignatureSpan = signatureSpan,
+                BodySpan = bodySpan,
+                NameSpan = nameSpan,
+                IsPartial = isPartial,
+                MetadataJson = metadataJson,
+                IsGenerated = isGenerated,
+                GeneratorIdentity = generatorIdentity,
+            });
         }
     }
 
@@ -451,7 +456,20 @@ public sealed class SymbolExtractor
     private EdgeRecord MakeEdge(string sourceId, string targetId, string kind, ISymbol sourceSymbol)
     {
         var loc = GetSymbolSourceLocation(sourceSymbol);
-        return new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: kind,provenance: "roslyn",snapshotId: _snapshotId,extractorVersion: VersionConstants.ExtractorVersion,sourceDocumentPath: loc?.path,sourceStartLine: loc?.startLine,sourceStartColumn: loc?.startColumn,sourceEndLine: loc?.endLine,sourceEndColumn: loc?.endColumn);
+        return new EdgeRecord
+        {
+            SourceSymbolId = sourceId,
+            TargetSymbolId = targetId,
+            Kind = kind,
+            Provenance = "roslyn",
+            SnapshotId = _snapshotId,
+            ExtractorVersion = VersionConstants.ExtractorVersion,
+            SourceDocumentPath = loc?.path,
+            SourceStartLine = loc?.startLine,
+            SourceStartColumn = loc?.startColumn,
+            SourceEndLine = loc?.endLine,
+            SourceEndColumn = loc?.endColumn,
+        };
     }
 
     private (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)?

@@ -118,24 +118,30 @@ public sealed class SnapshotManifest
                 lineStarts = entry.LineStarts;
             }
 
-            return new DocumentVersion(documentId: docPath,filePath: docPath,contentHash: kvp.Value.ToString(),
-                encoding: encoding,
-                lineStart: lineStarts,
-                createdAtUtc: DateTime.MinValue,
-                content: content ?? Array.Empty<byte>(),
-                lineStarts: lineStarts
-            );
+            return new DocumentVersion
+            {
+                DocumentId = docPath,
+                FilePath = docPath,
+                ContentHash = kvp.Value.ToString(),
+                Encoding = encoding,
+                LineStart = lineStarts,
+                CreatedAtUtc = DateTime.MinValue,
+                Content = content ?? Array.Empty<byte>(),
+                LineStarts = lineStarts,
+            };
         }).ToList();
 
-        return new Storage.SnapshotManifest(snapshotId: SnapshotId.ToString(),
-            workspaceId: WorkspaceId.Value,
-            gitRoot: WorkspaceId.GitRoot,
-            solutionPath: WorkspaceId.SolutionPath,
-            sdkVersion: SdkVersion,
-            compilerVersion: CompilerVersion,
-            createdAtUtc: BuiltAtUtc,
-            documents: documents
-        );
+        return new Storage.SnapshotManifest
+        {
+            SnapshotId = SnapshotId.ToString(),
+            WorkspaceId = WorkspaceId.Value,
+            GitRoot = WorkspaceId.GitRoot,
+            SolutionPath = WorkspaceId.SolutionPath,
+            SdkVersion = SdkVersion,
+            CompilerVersion = CompilerVersion,
+            CreatedAtUtc = BuiltAtUtc,
+            Documents = documents,
+        };
     }
 
     internal static SnapshotManifest FromStorageManifest(Storage.SnapshotManifest storage)

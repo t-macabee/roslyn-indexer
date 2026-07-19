@@ -43,16 +43,18 @@ public class MigrationRunnerTests : IDisposable
         string? fqn = null,
         string? metadataJson = null)
     {
-        return new SymbolDeclaration(
-            symbolId: new SymbolId(docCommentId, assembly, fqn),
-            kind: kind,
-            documentVersionId: docVersionId,
-            fullSpan: new DeclarationSpan(fullS, fullE),
-            signatureSpan: new DeclarationSpan(sigS, sigE),
-            bodySpan: new DeclarationSpan(bodyS, bodyE),
-            nameSpan: new DeclarationSpan(nameS, nameE),
-            isPartial: isPartial,
-            metadataJson: metadataJson);
+        return new SymbolDeclaration
+{
+    SymbolId = new SymbolId(docCommentId, assembly, fqn),
+    Kind = kind,
+    DocumentVersionId = docVersionId,
+    FullSpan = new DeclarationSpan(fullS, fullE),
+    SignatureSpan = new DeclarationSpan(sigS, sigE),
+    BodySpan = new DeclarationSpan(bodyS, bodyE),
+    NameSpan = new DeclarationSpan(nameS, nameE),
+    IsPartial = isPartial,
+    MetadataJson = metadataJson
+};
     }
 
     [Fact]
@@ -109,20 +111,21 @@ public class MigrationRunnerTests : IDisposable
         var solutionPath = "/home/user/project/src/sln";
         var createdAt = new DateTime(2026, 6, 15, 10, 0, 0, DateTimeKind.Utc);
 
-        var original = new SnapshotManifest(
-            snapshotId: snapshotId,
-            workspaceId: workspaceId,
-            gitRoot: gitRoot,
-            solutionPath: solutionPath,
-            sdkVersion: "10.0.301",
-            compilerVersion: "4.12.0.0",
-            createdAtUtc: createdAt,
-            documents: new System.Collections.Generic.List<DocumentVersion>
+        var original = new SnapshotManifest
+{
+    SnapshotId = snapshotId,
+    WorkspaceId = workspaceId,
+    GitRoot = gitRoot,
+    SolutionPath = solutionPath,
+    SdkVersion = "10.0.301",
+    CompilerVersion = "4.12.0.0",
+    CreatedAtUtc = createdAt,
+    Documents = new System.Collections.Generic.List<DocumentVersion>
             {
-                new("doc1", "src/Program.cs", "abc123", "utf-8", "", DateTime.MinValue),
-                new("doc2", "src/Utils.cs", "def456", "utf-8", "", DateTime.MinValue),
+                new DocumentVersion { DocumentId = "doc1", FilePath = "src/Program.cs", ContentHash = "abc123", Encoding = "utf-8", LineStart = "", CreatedAtUtc = DateTime.MinValue },
+                new DocumentVersion { DocumentId = "doc2", FilePath = "src/Utils.cs", ContentHash = "def456", Encoding = "utf-8", LineStart = "", CreatedAtUtc = DateTime.MinValue },
             }
-        );
+};
 
         store.SaveSnapshot(original);
 
@@ -177,20 +180,20 @@ public class MigrationRunnerTests : IDisposable
         var sourceBytes = System.Text.Encoding.UTF8.GetBytes("using System;\n\nclass Foo { }\n");
         var lineStarts = "[0,13,15]";
 
-        var original = new SnapshotManifest(
-            snapshotId: snapshotId,
-            workspaceId: workspaceId,
-            gitRoot: "/root",
-            solutionPath: "/root/proj",
-            sdkVersion: "10.0.301",
-            compilerVersion: "4.12.0.0",
-            createdAtUtc: DateTime.UtcNow,
-            documents: new System.Collections.Generic.List<DocumentVersion>
+        var original = new SnapshotManifest
+{
+    SnapshotId = snapshotId,
+    WorkspaceId = workspaceId,
+    GitRoot = "/root",
+    SolutionPath = "/root/proj",
+    SdkVersion = "10.0.301",
+    CompilerVersion = "4.12.0.0",
+    CreatedAtUtc = DateTime.UtcNow,
+    Documents = new System.Collections.Generic.List<DocumentVersion>
             {
-                new("doc1", "src/Foo.cs", "hash1", "utf-8", lineStarts, DateTime.MinValue,
-                    sourceBytes, lineStarts),
+                new DocumentVersion { DocumentId = "doc1", FilePath = "src/Foo.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
             }
-        );
+};
 
         store.SaveSnapshot(original);
 
@@ -242,20 +245,20 @@ public class MigrationRunnerTests : IDisposable
         var sourceBytes = System.Text.Encoding.UTF8.GetBytes("console.log('hello');");
         var lineStarts = "[0,22]";
 
-        var original = new SnapshotManifest(
-            snapshotId: snapshotId,
-            workspaceId: workspaceId,
-            gitRoot: "/root",
-            solutionPath: "/root/proj",
-            sdkVersion: "10.0.301",
-            compilerVersion: "4.12.0.0",
-            createdAtUtc: DateTime.UtcNow,
-            documents: new System.Collections.Generic.List<DocumentVersion>
+        var original = new SnapshotManifest
+{
+    SnapshotId = snapshotId,
+    WorkspaceId = workspaceId,
+    GitRoot = "/root",
+    SolutionPath = "/root/proj",
+    SdkVersion = "10.0.301",
+    CompilerVersion = "4.12.0.0",
+    CreatedAtUtc = DateTime.UtcNow,
+    Documents = new System.Collections.Generic.List<DocumentVersion>
             {
-                new("doc1", "src/app.cs", "hash1", "utf-8", lineStarts, DateTime.MinValue,
-                    sourceBytes, lineStarts),
+                new DocumentVersion { DocumentId = "doc1", FilePath = "src/app.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
             }
-        );
+};
         store.SaveSnapshot(original);
         store.Close();
 
@@ -282,20 +285,20 @@ public class MigrationRunnerTests : IDisposable
         var sourceBytes = System.Text.Encoding.UTF8.GetBytes("line1\nline2\nline3\n");
         var lineStarts = "[0,6,12,18]";
 
-        var original = new SnapshotManifest(
-            snapshotId: snapshotId,
-            workspaceId: workspaceId,
-            gitRoot: "/root",
-            solutionPath: "/root/proj",
-            sdkVersion: "10.0.301",
-            compilerVersion: "4.12.0.0",
-            createdAtUtc: DateTime.UtcNow,
-            documents: new System.Collections.Generic.List<DocumentVersion>
+        var original = new SnapshotManifest
+{
+    SnapshotId = snapshotId,
+    WorkspaceId = workspaceId,
+    GitRoot = "/root",
+    SolutionPath = "/root/proj",
+    SdkVersion = "10.0.301",
+    CompilerVersion = "4.12.0.0",
+    CreatedAtUtc = DateTime.UtcNow,
+    Documents = new System.Collections.Generic.List<DocumentVersion>
             {
-                new("doc1", "src/multi.cs", "hash1", "utf-8", lineStarts, DateTime.MinValue,
-                    sourceBytes, lineStarts),
+                new DocumentVersion { DocumentId = "doc1", FilePath = "src/multi.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
             }
-        );
+};
         store.SaveSnapshot(original);
 
         var loaded = store.LoadLatestSnapshot(workspaceId);
@@ -316,20 +319,21 @@ public class MigrationRunnerTests : IDisposable
         var snapshotId = "snap-nullcontent-001";
         var workspaceId = "workspace:///root/proj";
 
-        var original = new SnapshotManifest(
-            snapshotId: snapshotId,
-            workspaceId: workspaceId,
-            gitRoot: "/root",
-            solutionPath: "/root/proj",
-            sdkVersion: "10.0.301",
-            compilerVersion: "4.12.0.0",
-            createdAtUtc: DateTime.UtcNow,
-            documents: new System.Collections.Generic.List<DocumentVersion>
+        var original = new SnapshotManifest
+{
+    SnapshotId = snapshotId,
+    WorkspaceId = workspaceId,
+    GitRoot = "/root",
+    SolutionPath = "/root/proj",
+    SdkVersion = "10.0.301",
+    CompilerVersion = "4.12.0.0",
+    CreatedAtUtc = DateTime.UtcNow,
+    Documents = new System.Collections.Generic.List<DocumentVersion>
             {
 
-                new("doc1", "src/empty.cs", "hash1", "utf-8", "", DateTime.MinValue),
+                new DocumentVersion { DocumentId = "doc1", FilePath = "src/empty.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = "", CreatedAtUtc = DateTime.MinValue },
             }
-        );
+};
         store.SaveSnapshot(original);
 
         var source = store.GetSource("src/empty.cs", snapshotId);
@@ -421,19 +425,20 @@ public class MigrationRunnerTests : IDisposable
 
             var lineStarts = "[0,14,33,56,107,113]";
 
-            var manifest = new SnapshotManifest(
-                snapshotId: snapshotId,
-                workspaceId: "workspace:///root/proj",
-                gitRoot: "/root",
-                solutionPath: "/root/proj",
-                sdkVersion: "10.0.301",
-                compilerVersion: "4.12.0.0",
-                createdAtUtc: DateTime.UtcNow,
-                documents: new List<DocumentVersion>
+            var manifest = new SnapshotManifest
+{
+    SnapshotId = snapshotId,
+    WorkspaceId = "workspace:///root/proj",
+    GitRoot = "/root",
+    SolutionPath = "/root/proj",
+    SdkVersion = "10.0.301",
+    CompilerVersion = "4.12.0.0",
+    CreatedAtUtc = DateTime.UtcNow,
+    Documents = new List<DocumentVersion>
                 {
-                    new("doc1", "src/Foo.cs", "hash1", "utf-8", lineStarts, DateTime.MinValue,
-                        sourceBytes, lineStarts),
-                });
+                    new DocumentVersion { DocumentId = "doc1", FilePath = "src/Foo.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
+                }
+};
             store.SaveSnapshot(manifest);
         }
 
@@ -561,44 +566,48 @@ public class MigrationRunnerTests : IDisposable
             var source2 = StringToBytes("partial class Foo { void B() {} }\n");
             var lineStarts = "[0,30]";
 
-            var manifest = new SnapshotManifest(
-                snapshotId: snapshotId,
-                workspaceId: "workspace:///root/proj",
-                gitRoot: "/root",
-                solutionPath: "/root/proj",
-                sdkVersion: "10.0.301",
-                compilerVersion: "4.12.0.0",
-                createdAtUtc: DateTime.UtcNow,
-                documents: new List<DocumentVersion>
+            var manifest = new SnapshotManifest
+{
+    SnapshotId = snapshotId,
+    WorkspaceId = "workspace:///root/proj",
+    GitRoot = "/root",
+    SolutionPath = "/root/proj",
+    SdkVersion = "10.0.301",
+    CompilerVersion = "4.12.0.0",
+    CreatedAtUtc = DateTime.UtcNow,
+    Documents = new List<DocumentVersion>
                 {
-                    new("doc-part1", "src/part1.cs", "hash-p1", "utf-8", lineStarts, DateTime.MinValue,
-                        source1, lineStarts),
-                    new("doc-part2", "src/part2.cs", "hash-p2", "utf-8", lineStarts, DateTime.MinValue,
-                        source2, lineStarts),
-                });
+                    new DocumentVersion { DocumentId = "doc-part1", FilePath = "src/part1.cs", ContentHash = "hash-p1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = source1, LineStarts = lineStarts },
+                    new DocumentVersion { DocumentId = "doc-part2", FilePath = "src/part2.cs", ContentHash = "hash-p2", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = source2, LineStarts = lineStarts },
+                }
+};
             store.SaveSnapshot(manifest);
 
             var symId = new SymbolId("T:Foo", "assembly1", "TestNs.Foo");
 
-            var decl1 = new SymbolDeclaration(
-                symbolId: symId,
-                kind: SymbolKind.Type,
-                documentVersionId: "hash-p1",
-                fullSpan: new DeclarationSpan(0, 29),
-                signatureSpan: new DeclarationSpan(0, 15),
-                bodySpan: new DeclarationSpan(15, 28),
-                nameSpan: new DeclarationSpan(15, 18),
-                isPartial: true);
+            var decl1 = new SymbolDeclaration
+{
+    SymbolId = symId,
+    Kind = SymbolKind.Type,
+    DocumentVersionId = "hash-p1",
+    FullSpan = new DeclarationSpan(0, 29),
+    SignatureSpan = new DeclarationSpan(0, 15),
+    BodySpan = new DeclarationSpan(15, 28),
+    NameSpan = new DeclarationSpan(15, 18),
+    IsPartial = true
+};
 
-            var decl2 = new SymbolDeclaration(
-                symbolId: symId,
-                kind: SymbolKind.Type,
-                documentVersionId: "hash-p2",
-                fullSpan: new DeclarationSpan(0, 29),
-                signatureSpan: new DeclarationSpan(0, 15),
-                bodySpan: new DeclarationSpan(15, 28),
-                nameSpan: new DeclarationSpan(15, 18),
-                isPartial: true);
+            var decl2 = new SymbolDeclaration
+{
+    SymbolId = symId,
+    Kind = SymbolKind.Type,
+    DocumentVersionId = "hash-p2",
+    FullSpan = new DeclarationSpan(0, 29),
+    SignatureSpan = new DeclarationSpan(0, 15),
+    BodySpan = new DeclarationSpan(15, 28),
+    NameSpan = new DeclarationSpan(15, 18),
+    IsPartial = true
+};
 
             store.SaveDeclarations(snapshotId, new[] { decl1, decl2 });
 
@@ -695,19 +704,20 @@ public class MigrationRunnerTests : IDisposable
             var lineStarts = "[0]";
             var sourceBytes = StringToBytes(content);
 
-            var manifest = new SnapshotManifest(
-                snapshotId: snapshotId,
-                workspaceId: "workspace:///root/proj",
-                gitRoot: "/root",
-                solutionPath: "/root/proj",
-                sdkVersion: "10.0.301",
-                compilerVersion: "4.12.0.0",
-                createdAtUtc: DateTime.UtcNow,
-                documents: new List<DocumentVersion>
+            var manifest = new SnapshotManifest
+{
+    SnapshotId = snapshotId,
+    WorkspaceId = "workspace:///root/proj",
+    GitRoot = "/root",
+    SolutionPath = "/root/proj",
+    SdkVersion = "10.0.301",
+    CompilerVersion = "4.12.0.0",
+    CreatedAtUtc = DateTime.UtcNow,
+    Documents = new List<DocumentVersion>
                 {
-                    new("doc-" + relativePath, relativePath, "hash-" + relativePath, "utf-8", lineStarts, DateTime.MinValue,
-                        sourceBytes, lineStarts),
-                });
+                    new DocumentVersion { DocumentId = "doc-" + relativePath, FilePath = relativePath, ContentHash = "hash-" + relativePath, Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
+                }
+};
             store.SaveSnapshot(manifest);
         }
 
@@ -752,14 +762,16 @@ public class MigrationRunnerTests : IDisposable
             CreateSnapshotWithContent(store, snapshotId, "src/Foo.cs",
                 "namespace N { class Foo { } }");
 
-            var decl = new SymbolDeclaration(
-                symbolId: new SymbolId("T:N.Foo", "asm1", "N.Foo"),
-                kind: SymbolKind.Type,
-                documentVersionId: "hash-src/Foo.cs",
-                fullSpan: new DeclarationSpan(0, 10),
-                signatureSpan: new DeclarationSpan(0, 10),
-                bodySpan: new DeclarationSpan(null, null),
-                nameSpan: new DeclarationSpan(0, 3));
+            var decl = new SymbolDeclaration
+{
+    SymbolId = new SymbolId("T:N.Foo", "asm1", "N.Foo"),
+    Kind = SymbolKind.Type,
+    DocumentVersionId = "hash-src/Foo.cs",
+    FullSpan = new DeclarationSpan(0, 10),
+    SignatureSpan = new DeclarationSpan(0, 10),
+    BodySpan = new DeclarationSpan(null, null),
+    NameSpan = new DeclarationSpan(0, 3)
+};
 
             store.SaveDeclarations(snapshotId, new[] { decl });
             store.BuildSearchIndex(snapshotId);
@@ -788,14 +800,16 @@ public class MigrationRunnerTests : IDisposable
             var snapshotId = "snap-fts-005";
             CreateSnapshotWithContent(store, snapshotId, "src/a.cs", "class A { }");
 
-            var decl = new SymbolDeclaration(
-                symbolId: new SymbolId("T:A", "asm1", "A"),
-                kind: SymbolKind.Type,
-                documentVersionId: "hash-src/a.cs",
-                fullSpan: new DeclarationSpan(0, 10),
-                signatureSpan: new DeclarationSpan(0, 10),
-                bodySpan: new DeclarationSpan(null, null),
-                nameSpan: new DeclarationSpan(0, 1));
+            var decl = new SymbolDeclaration
+{
+    SymbolId = new SymbolId("T:A", "asm1", "A"),
+    Kind = SymbolKind.Type,
+    DocumentVersionId = "hash-src/a.cs",
+    FullSpan = new DeclarationSpan(0, 10),
+    SignatureSpan = new DeclarationSpan(0, 10),
+    BodySpan = new DeclarationSpan(null, null),
+    NameSpan = new DeclarationSpan(0, 1)
+};
 
             store.SaveDeclarations(snapshotId, new[] { decl });
             store.BuildSearchIndex(snapshotId);
@@ -811,14 +825,16 @@ public class MigrationRunnerTests : IDisposable
             var snapshotId = "snap-fts-006";
             CreateSnapshotWithContent(store, snapshotId, "src/a.cs", "class A { }");
 
-            var decl = new SymbolDeclaration(
-                symbolId: new SymbolId("T:A", "asm1", "MyNs.A"),
-                kind: SymbolKind.Type,
-                documentVersionId: "hash-src/a.cs",
-                fullSpan: new DeclarationSpan(0, 10),
-                signatureSpan: new DeclarationSpan(0, 10),
-                bodySpan: new DeclarationSpan(null, null),
-                nameSpan: new DeclarationSpan(0, 1));
+            var decl = new SymbolDeclaration
+{
+    SymbolId = new SymbolId("T:A", "asm1", "MyNs.A"),
+    Kind = SymbolKind.Type,
+    DocumentVersionId = "hash-src/a.cs",
+    FullSpan = new DeclarationSpan(0, 10),
+    SignatureSpan = new DeclarationSpan(0, 10),
+    BodySpan = new DeclarationSpan(null, null),
+    NameSpan = new DeclarationSpan(0, 1)
+};
 
             store.SaveDeclarations(snapshotId, new[] { decl });
 
@@ -835,14 +851,16 @@ public class MigrationRunnerTests : IDisposable
             var snapshotId = "snap-fts-007";
             CreateSnapshotWithContent(store, snapshotId, "src/a.cs", "class A { }");
 
-            var decl = new SymbolDeclaration(
-                symbolId: new SymbolId("T:A", "asm1", "MyNs.MyClass"),
-                kind: SymbolKind.Type,
-                documentVersionId: "hash-src/a.cs",
-                fullSpan: new DeclarationSpan(0, 10),
-                signatureSpan: new DeclarationSpan(0, 10),
-                bodySpan: new DeclarationSpan(null, null),
-                nameSpan: new DeclarationSpan(0, 1));
+            var decl = new SymbolDeclaration
+{
+    SymbolId = new SymbolId("T:A", "asm1", "MyNs.MyClass"),
+    Kind = SymbolKind.Type,
+    DocumentVersionId = "hash-src/a.cs",
+    FullSpan = new DeclarationSpan(0, 10),
+    SignatureSpan = new DeclarationSpan(0, 10),
+    BodySpan = new DeclarationSpan(null, null),
+    NameSpan = new DeclarationSpan(0, 1)
+};
 
             store.SaveDeclarations(snapshotId, new[] { decl });
 
@@ -956,8 +974,8 @@ public class MigrationRunnerTests : IDisposable
 
             var edges = new List<EdgeRecord>
             {
-                new("T:Ns.Foo|asm1", "T:Ns.Bar|asm1", "Inherits", "roslyn"),
-                new("T:Ns.Foo|asm1", "T:Ns.IBaz|asm1", "Implements", "roslyn"),
+                new EdgeRecord { SourceSymbolId = "T:Ns.Foo|asm1", TargetSymbolId = "T:Ns.Bar|asm1", Kind = "Inherits", Provenance = "roslyn" },
+                new EdgeRecord { SourceSymbolId = "T:Ns.Foo|asm1", TargetSymbolId = "T:Ns.IBaz|asm1", Kind = "Implements", Provenance = "roslyn" },
             };
             store.SaveEdges(snapshotId, edges);
 
@@ -981,10 +999,8 @@ public class MigrationRunnerTests : IDisposable
 
             var diagnostics = new List<DiagnosticRecord>
             {
-                new("MyProject", "src/Program.cs", "Warning", "CS0219", "Variable 'x' is unused",
-                    startLine: 10, startColumn: 5, endLine: 10, endColumn: 6),
-                new("MyProject", "src/Utils.cs", "Error", "CS0103", "The name 'foo' does not exist",
-                    startLine: 5, startColumn: 1, endLine: 5, endColumn: 4),
+                new DiagnosticRecord { ProjectName = "MyProject", DocumentPath = "src/Program.cs", Severity = "Warning", Id = "CS0219", Message = "Variable 'x' is unused", StartLine = 10, StartColumn = 5, EndLine = 10, EndColumn = 6 },
+                new DiagnosticRecord { ProjectName = "MyProject", DocumentPath = "src/Utils.cs", Severity = "Error", Id = "CS0103", Message = "The name 'foo' does not exist", StartLine = 5, StartColumn = 1, EndLine = 5, EndColumn = 4 },
             };
             store.SaveDiagnostics(snapshotId, diagnostics);
 
@@ -1095,18 +1111,7 @@ public class MigrationRunnerTests : IDisposable
 
             var edges = new List<EdgeRecord>
             {
-                new(
-                    sourceSymbolId: "M:Ns.Foo.Bar|asm1",
-                    targetSymbolId: "M:Ns.Baz.Qux|asm1",
-                    kind: EdgeKind.Calls.ToString(),
-                    provenance: "compiler_proved",
-                    snapshotId: snapshotId,
-                    extractorVersion: "member-edges-v1",
-                    sourceDocumentPath: "src/Foo.cs",
-                    sourceStartLine: 42,
-                    sourceStartColumn: 13,
-                    sourceEndLine: 42,
-                    sourceEndColumn: 30)
+                new EdgeRecord { SourceSymbolId = "M:Ns.Foo.Bar|asm1", TargetSymbolId = "M:Ns.Baz.Qux|asm1", Kind = "Calls", Provenance = "compiler_proved", SnapshotId = snapshotId, ExtractorVersion = "member-edges-v1", SourceDocumentPath = "src/Foo.cs", SourceStartLine = 42, SourceStartColumn = 13, SourceEndLine = 42, SourceEndColumn = 30 }
             };
 
             store.SaveEdges(snapshotId, edges);
@@ -1137,13 +1142,7 @@ public class MigrationRunnerTests : IDisposable
 
             var edges = new List<EdgeRecord>
             {
-                new(
-                    sourceSymbolId: "T:Ns.Foo|asm1",
-                    targetSymbolId: "T:Ns.Bar|asm1",
-                    kind: EdgeKind.Inherits.ToString(),
-                    provenance: "compiler_proved",
-                    snapshotId: snapshotId,
-                    extractorVersion: "v1")
+                new EdgeRecord { SourceSymbolId = "T:Ns.Foo|asm1", TargetSymbolId = "T:Ns.Bar|asm1", Kind = "Inherits", Provenance = "compiler_proved", SnapshotId = snapshotId, ExtractorVersion = "v1" }
             };
 
             store.SaveEdges(snapshotId, edges);
@@ -1172,8 +1171,8 @@ public class MigrationRunnerTests : IDisposable
 
             var edges = new List<EdgeRecord>
             {
-                new("T:Ns.Foo|asm1", "T:Ns.Bar|asm1", "Inherits", "roslyn"),
-                new("T:Ns.Foo|asm1", "T:Ns.IBaz|asm1", "Implements"),
+                new EdgeRecord { SourceSymbolId = "T:Ns.Foo|asm1", TargetSymbolId = "T:Ns.Bar|asm1", Kind = "Inherits", Provenance = "roslyn" },
+                new EdgeRecord { SourceSymbolId = "T:Ns.Foo|asm1", TargetSymbolId = "T:Ns.IBaz|asm1", Kind = "Implements" },
             };
 
             store.SaveEdges(snapshotId, edges);
@@ -1207,9 +1206,9 @@ public class MigrationRunnerTests : IDisposable
 
             var edges = new List<EdgeRecord>
             {
-                new("T:A|asm1", "T:Base|asm1", "Inherits", "cp", snapshotId, "v1"),
-                new("T:A|asm1", "T:IFoo|asm1", "Implements", "cp", snapshotId, "v1"),
-                new("M:A.Foo|asm1", "M:B.Bar|asm1", "Calls", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "T:A|asm1", TargetSymbolId = "T:Base|asm1", Kind = "Inherits", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "T:A|asm1", TargetSymbolId = "T:IFoo|asm1", Kind = "Implements", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:A.Foo|asm1", TargetSymbolId = "M:B.Bar|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             store.SaveEdges(snapshotId, edges);
 
@@ -1233,9 +1232,9 @@ public class MigrationRunnerTests : IDisposable
 
             var edges = new List<EdgeRecord>
             {
-                new("M:A.Foo|asm1", "M:B.Bar|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:C.Qux|asm1", "M:B.Bar|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:B.Bar|asm1", "M:D.Other|asm1", "Calls", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "M:A.Foo|asm1", TargetSymbolId = "M:B.Bar|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:C.Qux|asm1", TargetSymbolId = "M:B.Bar|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:B.Bar|asm1", TargetSymbolId = "M:D.Other|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             store.SaveEdges(snapshotId, edges);
 
@@ -1254,9 +1253,9 @@ public class MigrationRunnerTests : IDisposable
 
             var edges = new List<EdgeRecord>
             {
-                new("M:A.Foo|asm1", "M:B.Bar|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:A.Foo|asm1", "M:C.Qux|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:B.Bar|asm1", "M:D.Other|asm1", "Calls", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "M:A.Foo|asm1", TargetSymbolId = "M:B.Bar|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:A.Foo|asm1", TargetSymbolId = "M:C.Qux|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:B.Bar|asm1", TargetSymbolId = "M:D.Other|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             store.SaveEdges(snapshotId, edges);
 
@@ -1516,19 +1515,20 @@ class Derived : Base {
 
             var lineStarts = "[0,14,33,56,107,113]";
 
-            var manifest = new SnapshotManifest(
-                snapshotId: snapshotId,
-                workspaceId: "workspace:///root/proj",
-                gitRoot: "/root",
-                solutionPath: "/root/proj",
-                sdkVersion: "10.0.301",
-                compilerVersion: "4.12.0.0",
-                createdAtUtc: DateTime.UtcNow,
-                documents: new List<DocumentVersion>
+            var manifest = new SnapshotManifest
+{
+    SnapshotId = snapshotId,
+    WorkspaceId = "workspace:///root/proj",
+    GitRoot = "/root",
+    SolutionPath = "/root/proj",
+    SdkVersion = "10.0.301",
+    CompilerVersion = "4.12.0.0",
+    CreatedAtUtc = DateTime.UtcNow,
+    Documents = new List<DocumentVersion>
                 {
-                    new("doc-" + snapshotId, "src/Foo.cs", "hash1", "utf-8", lineStarts, DateTime.MinValue,
-                        sourceBytes, lineStarts),
-                });
+                    new DocumentVersion { DocumentId = "doc-" + snapshotId, FilePath = "src/Foo.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
+                }
+};
             store.SaveSnapshot(manifest);
         }
 
@@ -1706,19 +1706,23 @@ class Derived : Base {
 
             var fromEdges = new List<EdgeRecord>
             {
-                new EdgeRecord(
-                    sourceSymbolId: "M:Ns.Foo|asm1",
-                    targetSymbolId: "M:Ns.Bar|asm1",
-                    kind: "Calls",
-                    provenance: "compiler_proved"),
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:Ns.Foo|asm1",
+                    TargetSymbolId = "M:Ns.Bar|asm1",
+                    Kind = "Calls",
+                    Provenance = "compiler_proved",
+                },
             };
             var toEdges = new List<EdgeRecord>
             {
-                new EdgeRecord(
-                    sourceSymbolId: "M:Ns.Bar|asm1",
-                    targetSymbolId: "M:Ns.Baz|asm1",
-                    kind: "Calls",
-                    provenance: "compiler_proved"),
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:Ns.Bar|asm1",
+                    TargetSymbolId = "M:Ns.Baz|asm1",
+                    Kind = "Calls",
+                    Provenance = "compiler_proved",
+                },
             };
 
             store.SaveEdges(fromSnapshotId, fromEdges);
@@ -1916,19 +1920,20 @@ class Derived : Base {
             var lineStarts = "[0]";
             var sourceBytes = StringToBytes(content);
 
-            var manifest = new SnapshotManifest(
-                snapshotId: snapshotId,
-                workspaceId: "workspace:///root/proj",
-                gitRoot: "/root",
-                solutionPath: "/root/proj",
-                sdkVersion: "10.0.301",
-                compilerVersion: "4.12.0.0",
-                createdAtUtc: DateTime.UtcNow,
-                documents: new List<DocumentVersion>
+            var manifest = new SnapshotManifest
+{
+    SnapshotId = snapshotId,
+    WorkspaceId = "workspace:///root/proj",
+    GitRoot = "/root",
+    SolutionPath = "/root/proj",
+    SdkVersion = "10.0.301",
+    CompilerVersion = "4.12.0.0",
+    CreatedAtUtc = DateTime.UtcNow,
+    Documents = new List<DocumentVersion>
                 {
-                    new("doc-" + relativePath, relativePath, "hash1", "utf-8", lineStarts, DateTime.MinValue,
-                        sourceBytes, lineStarts),
-                });
+                    new DocumentVersion { DocumentId = "doc-" + relativePath, FilePath = relativePath, ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
+                }
+};
             store.SaveSnapshot(manifest);
         }
 
@@ -1968,16 +1973,18 @@ class Derived : Base {
             CreateSnapshotWithDocument(store, snapshotId, "src/Generated.cs",
                 "// <auto-generated>\nclass GeneratedClass { }");
 
-            var decl = new SymbolDeclaration(
-                symbolId: new SymbolId("T:GeneratedClass", "asm1", "GeneratedClass"),
-                kind: SymbolKind.Type,
-                documentVersionId: "hash1",
-                fullSpan: new DeclarationSpan(0, 44),
-                signatureSpan: new DeclarationSpan(0, 26),
-                bodySpan: new DeclarationSpan(26, 43),
-                nameSpan: new DeclarationSpan(26, 40),
-                isGenerated: true,
-                generatorIdentity: "SG/FooGenerator");
+            var decl = new SymbolDeclaration
+{
+    SymbolId = new SymbolId("T:GeneratedClass", "asm1", "GeneratedClass"),
+    Kind = SymbolKind.Type,
+    DocumentVersionId = "hash1",
+    FullSpan = new DeclarationSpan(0, 44),
+    SignatureSpan = new DeclarationSpan(0, 26),
+    BodySpan = new DeclarationSpan(26, 43),
+    NameSpan = new DeclarationSpan(26, 40),
+    IsGenerated = true,
+    GeneratorIdentity = "SG/FooGenerator"
+};
 
             store.SaveDeclarations(snapshotId, new[] { decl });
 
@@ -2001,16 +2008,18 @@ class Derived : Base {
             CreateSnapshotWithDocument(store, snapshotId, "src/Gen.cs",
                 "// <auto-generated>\nclass Gen { void Foo() { } }");
 
-            var decl = new SymbolDeclaration(
-                symbolId: new SymbolId("T:Gen", "asm1", "Gen"),
-                kind: SymbolKind.Type,
-                documentVersionId: "hash1",
-                fullSpan: new DeclarationSpan(0, 40),
-                signatureSpan: new DeclarationSpan(0, 20),
-                bodySpan: new DeclarationSpan(21, 39),
-                nameSpan: new DeclarationSpan(18, 21),
-                isGenerated: true,
-                generatorIdentity: "auto-generated-header");
+            var decl = new SymbolDeclaration
+{
+    SymbolId = new SymbolId("T:Gen", "asm1", "Gen"),
+    Kind = SymbolKind.Type,
+    DocumentVersionId = "hash1",
+    FullSpan = new DeclarationSpan(0, 40),
+    SignatureSpan = new DeclarationSpan(0, 20),
+    BodySpan = new DeclarationSpan(21, 39),
+    NameSpan = new DeclarationSpan(18, 21),
+    IsGenerated = true,
+    GeneratorIdentity = "auto-generated-header"
+};
 
             store.SaveDeclarations(snapshotId, new[] { decl });
 
@@ -2030,26 +2039,30 @@ class Derived : Base {
             CreateSnapshotWithDocument(store, snapshotId, "src/Normal.cs",
                 "class NormalClass { }");
 
-            var normalDecl = new SymbolDeclaration(
-                symbolId: new SymbolId("T:NormalClass", "asm1", "NormalClass"),
-                kind: SymbolKind.Type,
-                documentVersionId: "hash1",
-                fullSpan: new DeclarationSpan(0, 20),
-                signatureSpan: new DeclarationSpan(0, 15),
-                bodySpan: new DeclarationSpan(16, 19),
-                nameSpan: new DeclarationSpan(7, 18),
-                isGenerated: false);
+            var normalDecl = new SymbolDeclaration
+{
+    SymbolId = new SymbolId("T:NormalClass", "asm1", "NormalClass"),
+    Kind = SymbolKind.Type,
+    DocumentVersionId = "hash1",
+    FullSpan = new DeclarationSpan(0, 20),
+    SignatureSpan = new DeclarationSpan(0, 15),
+    BodySpan = new DeclarationSpan(16, 19),
+    NameSpan = new DeclarationSpan(7, 18),
+    IsGenerated = false
+};
 
-            var generatedDecl = new SymbolDeclaration(
-                symbolId: new SymbolId("T:GenClass", "asm1", "GenClass"),
-                kind: SymbolKind.Type,
-                documentVersionId: "hash1",
-                fullSpan: new DeclarationSpan(0, 20),
-                signatureSpan: new DeclarationSpan(0, 15),
-                bodySpan: new DeclarationSpan(16, 19),
-                nameSpan: new DeclarationSpan(7, 18),
-                isGenerated: true,
-                generatorIdentity: "test-gen");
+            var generatedDecl = new SymbolDeclaration
+{
+    SymbolId = new SymbolId("T:GenClass", "asm1", "GenClass"),
+    Kind = SymbolKind.Type,
+    DocumentVersionId = "hash1",
+    FullSpan = new DeclarationSpan(0, 20),
+    SignatureSpan = new DeclarationSpan(0, 15),
+    BodySpan = new DeclarationSpan(16, 19),
+    NameSpan = new DeclarationSpan(7, 18),
+    IsGenerated = true,
+    GeneratorIdentity = "test-gen"
+};
 
             store.SaveDeclarations(snapshotId, new[] { normalDecl, generatedDecl });
             store.BuildSearchIndex(snapshotId);
@@ -2540,18 +2553,20 @@ public class Foo
         [Fact]
         public void EdgeRecord_FullConstructor_RoundTrips()
         {
-            var edge = new EdgeRecord(
-                sourceSymbolId: "T:Ns.Foo|asm1",
-                targetSymbolId: "T:Ns.Bar|asm1",
-                kind: "RoutesTo",
-                provenance: "framework_derived",
-                snapshotId: "snap-b5-edge-001",
-                extractorVersion: "aspnetcore-v1",
-                sourceDocumentPath: "src/Test.cs",
-                sourceStartLine: 10,
-                sourceStartColumn: 5,
-                sourceEndLine: 10,
-                sourceEndColumn: 20);
+            var edge = new EdgeRecord
+            {
+                SourceSymbolId = "T:Ns.Foo|asm1",
+                TargetSymbolId = "T:Ns.Bar|asm1",
+                Kind = "RoutesTo",
+                Provenance = "framework_derived",
+                SnapshotId = "snap-b5-edge-001",
+                ExtractorVersion = "aspnetcore-v1",
+                SourceDocumentPath = "src/Test.cs",
+                SourceStartLine = 10,
+                SourceStartColumn = 5,
+                SourceEndLine = 10,
+                SourceEndColumn = 20,
+            };
 
             Assert.Equal("RoutesTo", edge.Kind);
             Assert.Equal("framework_derived", edge.Provenance);
@@ -2605,8 +2620,7 @@ public class Foo
             var snapshotId = "snap-b7-002";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "compiler_proved", snapshotId, "v1",
-                    sourceDocumentPath: "src/A.cs", sourceStartLine: 10)
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "compiler_proved", SnapshotId = snapshotId, ExtractorVersion = "v1", SourceDocumentPath = "src/A.cs", SourceStartLine = 10 }
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -2633,8 +2647,8 @@ public class Foo
             var snapshotId = "snap-b7-003";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:B|asm1", "M:C|asm1", "Calls", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:B|asm1", TargetSymbolId = "M:C|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -2657,8 +2671,8 @@ public class Foo
             var snapshotId = "snap-b7-004";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:A|asm1", "M:C|asm1", "Calls", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:C|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -2678,8 +2692,8 @@ public class Foo
             var snapshotId = "snap-b7-005";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:C|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:C|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -2700,8 +2714,8 @@ public class Foo
             var snapshotId = "snap-b7-006";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:B|asm1", "M:A|asm1", "Calls", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:B|asm1", TargetSymbolId = "M:A|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -2721,8 +2735,8 @@ public class Foo
             var snapshotId = "snap-b7-007";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:B|asm1", "M:C|asm1", "Calls", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:B|asm1", TargetSymbolId = "M:C|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -2742,8 +2756,8 @@ public class Foo
             var snapshotId = "snap-b7-008";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:A|asm1", "M:C|asm1", "Reads", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:C|asm1", Kind = "Reads", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -2764,8 +2778,7 @@ public class Foo
             var snapshotId = "snap-b7-009";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1",
-                    sourceDocumentPath: "src/A.cs", sourceStartLine: 10)
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1", SourceDocumentPath = "src/A.cs", SourceStartLine = 10 }
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -2787,7 +2800,7 @@ public class Foo
             var snapshotId = "snap-b7-010";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -2804,8 +2817,8 @@ public class Foo
             var snapshotId = "snap-b7-011";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:A|asm1", "M:C|asm1", "Calls", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:C|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -2822,9 +2835,9 @@ public class Foo
             var snapshotId = "snap-b7-012";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1"),
-                new("M:A|asm1", "M:C|asm1", "Reads", "cp", snapshotId, "v1"),
-                new("M:A|asm1", "M:D|asm1", "Writes", "cp", snapshotId, "v1"),
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:C|asm1", Kind = "Reads", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:D|asm1", Kind = "Writes", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1" },
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -2846,8 +2859,7 @@ public class Foo
             var snapshotId = "snap-b7-013";
             var edges = new List<EdgeRecord>
             {
-                new("M:A|asm1", "M:B|asm1", "Calls", "cp", snapshotId, "v1",
-                    sourceDocumentPath: "src/A.cs", sourceStartLine: 42)
+                new EdgeRecord { SourceSymbolId = "M:A|asm1", TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "cp", SnapshotId = snapshotId, ExtractorVersion = "v1", SourceDocumentPath = "src/A.cs", SourceStartLine = 42 }
             };
             var store = CreateStoreWithEdges(snapshotId, edges);
             var traverser = new ImpactTraverser(store, snapshotId);
@@ -3075,15 +3087,17 @@ class Source {
             var declarations = symbolIds.Select(id =>
             {
                 var sid = SymbolId.Parse(id);
-                return new SymbolDeclaration(
-                    symbolId: sid,
-                    kind: SymbolKind.Method,
-                    documentVersionId: "doc-v1",
-                    fullSpan: new DeclarationSpan(null, null),
-                    signatureSpan: new DeclarationSpan(null, null),
-                    bodySpan: new DeclarationSpan(null, null),
-                    nameSpan: new DeclarationSpan(null, null),
-                    metadataJson: "{\"accessibility\":\"public\"}");
+                return new SymbolDeclaration
+{
+    SymbolId = sid,
+    Kind = SymbolKind.Method,
+    DocumentVersionId = "doc-v1",
+    FullSpan = new DeclarationSpan(null, null),
+    SignatureSpan = new DeclarationSpan(null, null),
+    BodySpan = new DeclarationSpan(null, null),
+    NameSpan = new DeclarationSpan(null, null),
+    MetadataJson = "{\"accessibility\":\"public\"}"
+};
             }).ToList();
             store.SaveDeclarations(snapshotId, declarations);
         }
@@ -3094,7 +3108,12 @@ class Source {
             const string snapId = "snap-c16-sim-001";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("M:A|asm", "M:B|asm", "Calls")
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:A|asm",
+                    TargetSymbolId = "M:B|asm",
+                    Kind = "Calls",
+                }
             };
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
@@ -3112,7 +3131,12 @@ class Source {
             const string snapId = "snap-c16-sim-002";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("M:C|asm", "M:B|asm", "Overrides")
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:C|asm",
+                    TargetSymbolId = "M:B|asm",
+                    Kind = "Overrides",
+                }
             };
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
@@ -3143,8 +3167,17 @@ class Source {
             const string snapId = "snap-c16-sim-004";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("M:A|asm", "M:B|asm", "Calls", "compiler_proved", snapId, "v1",
-                    sourceDocumentPath: "src/A.cs", sourceStartLine: 10)
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:A|asm",
+                    TargetSymbolId = "M:B|asm",
+                    Kind = "Calls",
+                    Provenance = "compiler_proved",
+                    SnapshotId = snapId,
+                    ExtractorVersion = "v1",
+                    SourceDocumentPath = "src/A.cs",
+                    SourceStartLine = 10,
+                }
             };
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
@@ -3163,8 +3196,18 @@ class Source {
             const string snapId = "snap-c16-sim-005";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("T:Startup|asm", "M:B|asm", "Registers"),
-                new EdgeRecord("M:A|asm", "M:B|asm", "Calls")
+                new EdgeRecord
+                {
+                    SourceSymbolId = "T:Startup|asm",
+                    TargetSymbolId = "M:B|asm",
+                    Kind = "Registers",
+                },
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:A|asm",
+                    TargetSymbolId = "M:B|asm",
+                    Kind = "Calls",
+                }
             };
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
@@ -3181,7 +3224,12 @@ class Source {
             const string snapId = "snap-c16-sim-006";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("M:FooTest|asm", "M:B|asm", "TestedBy")
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:FooTest|asm",
+                    TargetSymbolId = "M:B|asm",
+                    Kind = "TestedBy",
+                }
             };
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
@@ -3242,15 +3290,17 @@ class Source {
             var declarations = symbolIds.Select(id =>
             {
                 var sid = SymbolId.Parse(id);
-                return new SymbolDeclaration(
-                    symbolId: sid,
-                    kind: SymbolKind.Method,
-                    documentVersionId: "doc-v1",
-                    fullSpan: new DeclarationSpan(null, null),
-                    signatureSpan: new DeclarationSpan(null, null),
-                    bodySpan: new DeclarationSpan(null, null),
-                    nameSpan: new DeclarationSpan(null, null),
-                    metadataJson: metadataJson ?? "{\"accessibility\":\"public\"}");
+                return new SymbolDeclaration
+{
+    SymbolId = sid,
+    Kind = SymbolKind.Method,
+    DocumentVersionId = "doc-v1",
+    FullSpan = new DeclarationSpan(null, null),
+    SignatureSpan = new DeclarationSpan(null, null),
+    BodySpan = new DeclarationSpan(null, null),
+    NameSpan = new DeclarationSpan(null, null),
+    MetadataJson = metadataJson ?? "{\"accessibility\":\"public\"}"
+};
             }).ToList();
             store.SaveDeclarations(snapshotId, declarations);
         }
@@ -3275,7 +3325,12 @@ class Source {
             const string snapId = "snap-c16-aud-002";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("M:Test|asm", "M:A|asm", "TestedBy")
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:Test|asm",
+                    TargetSymbolId = "M:A|asm",
+                    Kind = "TestedBy",
+                }
             };
             var store = CreateStoreWithEdges(snapId, edges);
             CreateStoreWithSymbols(store, snapId, new List<string> { "M:A|asm", "M:Test|asm" });
@@ -3293,7 +3348,12 @@ class Source {
             const string snapId = "snap-c16-aud-003";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("M:Caller|asm", "M:A|asm", "Calls")
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:Caller|asm",
+                    TargetSymbolId = "M:A|asm",
+                    Kind = "Calls",
+                }
             };
             var store = CreateStoreWithEdges(snapId, edges);
             CreateStoreWithSymbols(store, snapId, new List<string> { "M:A|asm", "M:Caller|asm" });
@@ -3326,7 +3386,12 @@ class Source {
             const string snapId = "snap-c16-aud-005";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("M:Test|asm", "M:A|asm", "TestedBy")
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:Test|asm",
+                    TargetSymbolId = "M:A|asm",
+                    Kind = "TestedBy",
+                }
             };
             var store = CreateStoreWithEdges(snapId, edges);
             CreateStoreWithSymbols(store, snapId, new List<string> { "M:A|asm", "M:Test|asm" },
@@ -3345,7 +3410,12 @@ class Source {
             const string snapId = "snap-c16-aud-006";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("T:Impl|asm", "T:IFoo|asm", "Implements")
+                new EdgeRecord
+                {
+                    SourceSymbolId = "T:Impl|asm",
+                    TargetSymbolId = "T:IFoo|asm",
+                    Kind = "Implements",
+                }
             };
             var store = CreateStoreWithEdges(snapId, edges);
             CreateStoreWithSymbols(store, snapId, new List<string> { "T:Impl|asm", "T:IFoo|asm" });
@@ -3363,8 +3433,18 @@ class Source {
             const string snapId = "snap-c16-aud-007";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("T:Impl|asm", "T:IFoo|asm", "Implements"),
-                new EdgeRecord("T:Startup|asm", "T:Impl|asm", "Registers")
+                new EdgeRecord
+                {
+                    SourceSymbolId = "T:Impl|asm",
+                    TargetSymbolId = "T:IFoo|asm",
+                    Kind = "Implements",
+                },
+                new EdgeRecord
+                {
+                    SourceSymbolId = "T:Startup|asm",
+                    TargetSymbolId = "T:Impl|asm",
+                    Kind = "Registers",
+                }
             };
             var store = CreateStoreWithEdges(snapId, edges);
             CreateStoreWithSymbols(store, snapId, new List<string> { "T:Impl|asm", "T:IFoo|asm", "T:Startup|asm" });
@@ -3382,11 +3462,36 @@ class Source {
             const string snapId = "snap-c16-aud-008";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("M:God|asm", "M:T1|asm", "Calls"),
-                new EdgeRecord("M:God|asm", "M:T2|asm", "Calls"),
-                new EdgeRecord("M:God|asm", "M:T3|asm", "Calls"),
-                new EdgeRecord("M:God|asm", "M:T4|asm", "Calls"),
-                new EdgeRecord("M:God|asm", "M:T5|asm", "Calls"),
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:God|asm",
+                    TargetSymbolId = "M:T1|asm",
+                    Kind = "Calls",
+                },
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:God|asm",
+                    TargetSymbolId = "M:T2|asm",
+                    Kind = "Calls",
+                },
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:God|asm",
+                    TargetSymbolId = "M:T3|asm",
+                    Kind = "Calls",
+                },
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:God|asm",
+                    TargetSymbolId = "M:T4|asm",
+                    Kind = "Calls",
+                },
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:God|asm",
+                    TargetSymbolId = "M:T5|asm",
+                    Kind = "Calls",
+                },
             };
             var store = CreateStoreWithEdges(snapId, edges);
             CreateStoreWithSymbols(store, snapId, new List<string> { "M:God|asm" });
@@ -3404,8 +3509,18 @@ class Source {
             const string snapId = "snap-c16-aud-009";
             var edges = new List<EdgeRecord>
             {
-                new EdgeRecord("M:Lean|asm", "M:T1|asm", "Calls"),
-                new EdgeRecord("M:Lean|asm", "M:T2|asm", "Calls"),
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:Lean|asm",
+                    TargetSymbolId = "M:T1|asm",
+                    Kind = "Calls",
+                },
+                new EdgeRecord
+                {
+                    SourceSymbolId = "M:Lean|asm",
+                    TargetSymbolId = "M:T2|asm",
+                    Kind = "Calls",
+                },
             };
             var store = CreateStoreWithEdges(snapId, edges);
             CreateStoreWithSymbols(store, snapId, new List<string> { "M:Lean|asm" });

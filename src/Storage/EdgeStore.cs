@@ -354,15 +354,18 @@ public sealed class EdgeStore : IEdgeStore
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            results.Add(new DiagnosticRecord(projectName: reader.GetString(0),
-                documentPath: reader.IsDBNull(1) ? null : reader.GetString(1),
-                severity: reader.GetString(2),
-                id: reader.GetString(3),
-                message: reader.GetString(4),
-                startLine: reader.IsDBNull(5) ? null : reader.GetInt32(5),
-                startColumn: reader.IsDBNull(6) ? null : reader.GetInt32(6),
-                endLine: reader.IsDBNull(7) ? null : reader.GetInt32(7),
-                endColumn: reader.IsDBNull(8) ? null : reader.GetInt32(8)));
+            results.Add(new DiagnosticRecord
+            {
+                ProjectName = reader.GetString(0),
+                DocumentPath = reader.IsDBNull(1) ? null : reader.GetString(1),
+                Severity = reader.GetString(2),
+                Id = reader.GetString(3),
+                Message = reader.GetString(4),
+                StartLine = reader.IsDBNull(5) ? null : reader.GetInt32(5),
+                StartColumn = reader.IsDBNull(6) ? null : reader.GetInt32(6),
+                EndLine = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                EndColumn = reader.IsDBNull(8) ? null : reader.GetInt32(8),
+            });
         }
         return results;
     }
@@ -409,17 +412,20 @@ public sealed class EdgeStore : IEdgeStore
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            results.Add(new EdgeRecord(sourceSymbolId: reader.GetString(0),
-                targetSymbolId: reader.GetString(1),
-                kind: reader.GetString(2),
-                provenance: reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                snapshotId: reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
-                extractorVersion: reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
-                sourceDocumentPath: reader.IsDBNull(6) ? null : reader.GetString(6),
-                sourceStartLine: reader.IsDBNull(7) ? null : reader.GetInt32(7),
-                sourceStartColumn: reader.IsDBNull(8) ? null : reader.GetInt32(8),
-                sourceEndLine: reader.IsDBNull(9) ? null : reader.GetInt32(9),
-                sourceEndColumn: reader.IsDBNull(10) ? null : reader.GetInt32(10)));
+            results.Add(new EdgeRecord
+            {
+                SourceSymbolId = reader.GetString(0),
+                TargetSymbolId = reader.GetString(1),
+                Kind = reader.GetString(2),
+                Provenance = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                SnapshotId = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                ExtractorVersion = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                SourceDocumentPath = reader.IsDBNull(6) ? null : reader.GetString(6),
+                SourceStartLine = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                SourceStartColumn = reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                SourceEndLine = reader.IsDBNull(9) ? null : reader.GetInt32(9),
+                SourceEndColumn = reader.IsDBNull(10) ? null : reader.GetInt32(10),
+            });
         }
         return results;
     }

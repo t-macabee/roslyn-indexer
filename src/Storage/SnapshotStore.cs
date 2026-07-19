@@ -220,16 +220,28 @@ public sealed class SnapshotStore : ISnapshotStore
         while (docReader.Read())
         {
             var lineStarts = docReader.IsDBNull(4) ? "" : docReader.GetString(4);
-            documents.Add(new DocumentVersion(documentId: docReader.GetString(0),
-                filePath: docReader.GetString(1),
-                contentHash: docReader.GetString(2),
-                encoding: docReader.IsDBNull(3) ? "" : docReader.GetString(3),
-                lineStart: lineStarts,
-                createdAtUtc: DateTime.MinValue
-            ));
+            documents.Add(new DocumentVersion
+            {
+                DocumentId = docReader.GetString(0),
+                FilePath = docReader.GetString(1),
+                ContentHash = docReader.GetString(2),
+                Encoding = docReader.IsDBNull(3) ? "" : docReader.GetString(3),
+                LineStart = lineStarts,
+                CreatedAtUtc = DateTime.MinValue,
+            });
         }
 
-        return new SnapshotManifest(snapshotId: snapshotId,workspaceId: workspaceIdStr,gitRoot: gitRoot,solutionPath: solutionPath,sdkVersion: sdkVersion ?? "",compilerVersion: compilerVersion ?? "",createdAtUtc: builtAtUtc,documents: documents);
+        return new SnapshotManifest
+        {
+            SnapshotId = snapshotId,
+            WorkspaceId = workspaceIdStr,
+            GitRoot = gitRoot,
+            SolutionPath = solutionPath,
+            SdkVersion = sdkVersion ?? "",
+            CompilerVersion = compilerVersion ?? "",
+            CreatedAtUtc = builtAtUtc,
+            Documents = documents,
+        };
     }
 
     public string? GetLatestSnapshotId(string? workspaceId = null)

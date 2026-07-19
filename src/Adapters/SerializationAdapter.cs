@@ -210,6 +210,14 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
     private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind,string snapshotId)
     {
-        return new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: kind,provenance: "framework_derived",snapshotId: snapshotId,extractorVersion: "serialization-v1");
+        return new EdgeRecord
+        {
+            SourceSymbolId = sourceId,
+            TargetSymbolId = targetId,
+            Kind = kind,
+            Provenance = "framework_derived",
+            SnapshotId = snapshotId,
+            ExtractorVersion = "serialization-v1",
+        };
     }
 }

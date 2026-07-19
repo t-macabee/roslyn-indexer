@@ -132,10 +132,15 @@ public sealed class TestAdapter : IFrameworkAdapter
         var key = (productionId, testMethodId, EdgeKind.TestedBy.ToString());
         if (seen.Add(key))
         {
-            edges.Add(new EdgeRecord(sourceSymbolId: productionId,targetSymbolId: testMethodId,kind: EdgeKind.TestedBy.ToString(),
-                provenance: "framework_derived",
-                snapshotId: snapshotId,
-                extractorVersion: "test-v1"));
+            edges.Add(new EdgeRecord
+            {
+                SourceSymbolId = productionId,
+                TargetSymbolId = testMethodId,
+                Kind = EdgeKind.TestedBy.ToString(),
+                Provenance = "framework_derived",
+                SnapshotId = snapshotId,
+                ExtractorVersion = "test-v1",
+            });
         }
     }
 

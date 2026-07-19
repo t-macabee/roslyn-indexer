@@ -59,15 +59,20 @@ public sealed class MemberEdgeExtractor(Compilation compilation, IReadOnlyDictio
 
                 var loc = GetMemberSourceLocation(member);
 
-                edges.Add(new EdgeRecord(sourceSymbolId: typeId, targetSymbolId: memberId, kind: EdgeKind.Declares.ToString(),
-                    provenance: "compiler_proved",
-                    snapshotId: _snapshotId,
-                    extractorVersion: ExtractorConstants.DeclaresExtractor,
-                    sourceDocumentPath: loc?.path,
-                    sourceStartLine: loc?.startLine,
-                    sourceStartColumn: loc?.startColumn,
-                    sourceEndLine: loc?.endLine,
-                    sourceEndColumn: loc?.endColumn));
+                edges.Add(new EdgeRecord
+                {
+                    SourceSymbolId = typeId,
+                    TargetSymbolId = memberId,
+                    Kind = EdgeKind.Declares.ToString(),
+                    Provenance = "compiler_proved",
+                    SnapshotId = _snapshotId,
+                    ExtractorVersion = ExtractorConstants.DeclaresExtractor,
+                    SourceDocumentPath = loc?.path,
+                    SourceStartLine = loc?.startLine,
+                    SourceStartColumn = loc?.startColumn,
+                    SourceEndLine = loc?.endLine,
+                    SourceEndColumn = loc?.endColumn,
+                });
             }
         }
 
@@ -487,7 +492,20 @@ public sealed class MemberEdgeExtractor(Compilation compilation, IReadOnlyDictio
             provenance += ":cross_generated";
         }
 
-        return new EdgeRecord(sourceSymbolId: sourceId, targetSymbolId: targetId, kind: kind, provenance: provenance, snapshotId: _snapshotId, extractorVersion: extractorVersion, sourceDocumentPath: location?.path, sourceStartLine: location?.sl, sourceStartColumn: location?.sc, sourceEndLine: location?.el, sourceEndColumn: location?.ec);
+        return new EdgeRecord
+        {
+            SourceSymbolId = sourceId,
+            TargetSymbolId = targetId,
+            Kind = kind,
+            Provenance = provenance,
+            SnapshotId = _snapshotId,
+            ExtractorVersion = extractorVersion,
+            SourceDocumentPath = sourceDocumentPath,
+            SourceStartLine = location?.sl,
+            SourceStartColumn = location?.sc,
+            SourceEndLine = location?.el,
+            SourceEndColumn = location?.ec,
+        };
     }
 
     private bool IsGeneratedDocument(string? documentPath)

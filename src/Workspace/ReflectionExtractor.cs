@@ -71,15 +71,20 @@ public sealed class ReflectionExtractor
                 continue;
 
             var loc = GetLocationInfo(typeOfExpr.GetLocation());
-            edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: EdgeKind.ReflectionTypeRef.ToString(),
-                provenance: "compiler_proved",
-                snapshotId: _snapshotId,
-                extractorVersion: ExtractorConstants.ReflectionExtractor,
-                sourceDocumentPath: loc.path,
-                sourceStartLine: loc.startLine,
-                sourceStartColumn: loc.startColumn,
-                sourceEndLine: loc.endLine,
-                sourceEndColumn: loc.endColumn));
+            edges.Add(new EdgeRecord
+            {
+                SourceSymbolId = sourceId,
+                TargetSymbolId = targetId,
+                Kind = EdgeKind.ReflectionTypeRef.ToString(),
+                Provenance = "compiler_proved",
+                SnapshotId = _snapshotId,
+                ExtractorVersion = ExtractorConstants.ReflectionExtractor,
+                SourceDocumentPath = loc.path,
+                SourceStartLine = loc.startLine,
+                SourceStartColumn = loc.startColumn,
+                SourceEndLine = loc.endLine,
+                SourceEndColumn = loc.endColumn,
+            });
         }
 
         return edges;
@@ -124,15 +129,20 @@ public sealed class ReflectionExtractor
                     continue;
 
                 var loc = GetLocationInfo(invocation.GetLocation());
-                edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: EdgeKind.ReflectionMemberRef.ToString(),
-                    provenance: "compiler_proved",
-                    snapshotId: _snapshotId,
-                    extractorVersion: ExtractorConstants.ReflectionExtractor,
-                    sourceDocumentPath: loc.path,
-                    sourceStartLine: loc.startLine,
-                    sourceStartColumn: loc.startColumn,
-                    sourceEndLine: loc.endLine,
-                    sourceEndColumn: loc.endColumn));
+                edges.Add(new EdgeRecord
+                {
+                    SourceSymbolId = sourceId,
+                    TargetSymbolId = targetId,
+                    Kind = EdgeKind.ReflectionMemberRef.ToString(),
+                    Provenance = "compiler_proved",
+                    SnapshotId = _snapshotId,
+                    ExtractorVersion = ExtractorConstants.ReflectionExtractor,
+                    SourceDocumentPath = loc.path,
+                    SourceStartLine = loc.startLine,
+                    SourceStartColumn = loc.startColumn,
+                    SourceEndLine = loc.endLine,
+                    SourceEndColumn = loc.endColumn,
+                });
             }
             else
             {
@@ -190,15 +200,20 @@ public sealed class ReflectionExtractor
 
             var loc = GetLocationInfo(literal.GetLocation());
 
-            edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: matchedSymbolId,kind: EdgeKind.ReflectionNameCandidate.ToString(),
-                provenance: "name_candidate",
-                snapshotId: _snapshotId,
-                extractorVersion: ExtractorConstants.ReflectionExtractor,
-                sourceDocumentPath: loc.path,
-                sourceStartLine: loc.startLine,
-                sourceStartColumn: loc.startColumn,
-                sourceEndLine: loc.endLine,
-                sourceEndColumn: loc.endColumn));
+            edges.Add(new EdgeRecord
+            {
+                SourceSymbolId = sourceId,
+                TargetSymbolId = matchedSymbolId,
+                Kind = EdgeKind.ReflectionNameCandidate.ToString(),
+                Provenance = "name_candidate",
+                SnapshotId = _snapshotId,
+                ExtractorVersion = ExtractorConstants.ReflectionExtractor,
+                SourceDocumentPath = loc.path,
+                SourceStartLine = loc.startLine,
+                SourceStartColumn = loc.startColumn,
+                SourceEndLine = loc.endLine,
+                SourceEndColumn = loc.endColumn,
+            });
         }
 
         return edges;
@@ -311,15 +326,20 @@ public sealed class ReflectionExtractor
                 continue;
 
             var loc = GetLocationInfo(invocation.GetLocation());
-            edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: sourceId,kind: EdgeKind.ReflectionTargetUnknown.ToString(),
-                provenance: "runtime_unknown",
-                snapshotId: _snapshotId,
-                extractorVersion: ExtractorConstants.ReflectionExtractor,
-                sourceDocumentPath: loc.path,
-                sourceStartLine: loc.startLine,
-                sourceStartColumn: loc.startColumn,
-                sourceEndLine: loc.endLine,
-                sourceEndColumn: loc.endColumn));
+            edges.Add(new EdgeRecord
+            {
+                SourceSymbolId = sourceId,
+                TargetSymbolId = sourceId,
+                Kind = EdgeKind.ReflectionTargetUnknown.ToString(),
+                Provenance = "runtime_unknown",
+                SnapshotId = _snapshotId,
+                ExtractorVersion = ExtractorConstants.ReflectionExtractor,
+                SourceDocumentPath = loc.path,
+                SourceStartLine = loc.startLine,
+                SourceStartColumn = loc.startColumn,
+                SourceEndLine = loc.endLine,
+                SourceEndColumn = loc.endColumn,
+            });
         }
 
         return edges;

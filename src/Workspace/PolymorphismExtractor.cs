@@ -110,15 +110,20 @@ public sealed class PolymorphismExtractor
                     bool isDirect = SymbolEqualityComparer.Default.Equals(implMember.ContainingType, type);
                     string provenance = isDirect ? "compiler_proved" : "possible";
 
-                    edges.Add(new EdgeRecord(sourceSymbolId: ifaceMemberId,targetSymbolId: implMemberId,kind: EdgeKind.MayDispatchTo.ToString(),
-                        provenance: provenance,
-                        snapshotId: _snapshotId,
-                        extractorVersion: ExtractorConstants.PolymorphismExtractor,
-                        sourceDocumentPath: GetDocumentPath(implMember),
-                        sourceStartLine: GetStartLine(implMember),
-                        sourceStartColumn: GetStartColumn(implMember),
-                        sourceEndLine: GetEndLine(implMember),
-                        sourceEndColumn: GetEndColumn(implMember)));
+                    edges.Add(new EdgeRecord
+                    {
+                        SourceSymbolId = ifaceMemberId,
+                        TargetSymbolId = implMemberId,
+                        Kind = EdgeKind.MayDispatchTo.ToString(),
+                        Provenance = provenance,
+                        SnapshotId = _snapshotId,
+                        ExtractorVersion = ExtractorConstants.PolymorphismExtractor,
+                        SourceDocumentPath = GetDocumentPath(implMember),
+                        SourceStartLine = GetStartLine(implMember),
+                        SourceStartColumn = GetStartColumn(implMember),
+                        SourceEndLine = GetEndLine(implMember),
+                        SourceEndColumn = GetEndColumn(implMember),
+                    });
                 }
             }
         }
@@ -246,15 +251,20 @@ public sealed class PolymorphismExtractor
                         continue;
 
                     var loc = GetLocationInfo(invocation.GetLocation());
-                    edges.Add(new EdgeRecord(sourceSymbolId: callerId,targetSymbolId: calleeId,kind: EdgeKind.StaticallyCalls.ToString(),
-                        provenance: "compiler_proved",
-                        snapshotId: _snapshotId,
-                        extractorVersion: ExtractorConstants.StaticallyCallsExtractor,
-                        sourceDocumentPath: loc.path,
-                        sourceStartLine: loc.startLine,
-                        sourceStartColumn: loc.startColumn,
-                        sourceEndLine: loc.endLine,
-                        sourceEndColumn: loc.endColumn));
+                    edges.Add(new EdgeRecord
+                    {
+                        SourceSymbolId = callerId,
+                        TargetSymbolId = calleeId,
+                        Kind = EdgeKind.StaticallyCalls.ToString(),
+                        Provenance = "compiler_proved",
+                        SnapshotId = _snapshotId,
+                        ExtractorVersion = ExtractorConstants.StaticallyCallsExtractor,
+                        SourceDocumentPath = loc.path,
+                        SourceStartLine = loc.startLine,
+                        SourceStartColumn = loc.startColumn,
+                        SourceEndLine = loc.endLine,
+                        SourceEndColumn = loc.endColumn,
+                    });
                 }
             }
         }
@@ -359,15 +369,20 @@ public sealed class PolymorphismExtractor
 
     private EdgeRecord MakeMayDispatchEdge(string sourceId, string targetId, ISymbol targetSymbol, string provenance)
     {
-        return new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: EdgeKind.MayDispatchTo.ToString(),
-            provenance: provenance,
-            snapshotId: _snapshotId,
-            extractorVersion: ExtractorConstants.PolymorphismExtractor,
-            sourceDocumentPath: GetDocumentPath(targetSymbol),
-            sourceStartLine: GetStartLine(targetSymbol),
-            sourceStartColumn: GetStartColumn(targetSymbol),
-            sourceEndLine: GetEndLine(targetSymbol),
-            sourceEndColumn: GetEndColumn(targetSymbol));
+        return new EdgeRecord
+        {
+            SourceSymbolId = sourceId,
+            TargetSymbolId = targetId,
+            Kind = EdgeKind.MayDispatchTo.ToString(),
+            Provenance = provenance,
+            SnapshotId = _snapshotId,
+            ExtractorVersion = ExtractorConstants.PolymorphismExtractor,
+            SourceDocumentPath = GetDocumentPath(targetSymbol),
+            SourceStartLine = GetStartLine(targetSymbol),
+            SourceStartColumn = GetStartColumn(targetSymbol),
+            SourceEndLine = GetEndLine(targetSymbol),
+            SourceEndColumn = GetEndColumn(targetSymbol),
+        };
     }
 
     // ----------------------------------------------------------------

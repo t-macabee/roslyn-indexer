@@ -2,35 +2,37 @@ using Lurp.Storage;
 
 namespace Lurp.Workspace
 {
+    public sealed record ContextLookup(
+        string SnapshotId,
+        string? SymbolArg,
+        string? FileArg,
+        int? LineNumber
+    );
+
+    public sealed record ContextAssemblyOptions(
+        ContextIntent Intent,
+        int Budget,
+        int MaxHops = 3,
+        bool IncludeGenerated = false
+    );
+
     public sealed class ContextAssembler
     {
-        private readonly IEdgeStore _edgeStore;
-        private readonly IDeclarationStore _declarationStore;
-        private readonly string _snapshotId;
-        private readonly SymbolId _symbolId;
-        private readonly ContextIntent _intent;
-        private readonly int _budget;
-        private readonly int _maxHops;
-        private readonly bool _includeGenerated;
-
-        public ContextAssembler(IEdgeStore edgeStore,IDeclarationStore declarationStore,string snapshotId,SymbolId symbolId,ContextIntent intent,int budget,int maxHops = 3,bool includeGenerated = false)
-        {
-            _edgeStore = edgeStore ?? throw new ArgumentNullException(nameof(edgeStore));
-            _declarationStore = declarationStore ?? throw new ArgumentNullException(nameof(declarationStore));
-            _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
-            _symbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
-            _intent = intent;
-            _budget = budget > 0 ? budget : throw new ArgumentOutOfRangeException(nameof(budget), "Budget must be positive.");
-            _maxHops = maxHops > 0 ? maxHops : throw new ArgumentOutOfRangeException(nameof(maxHops), "maxHops must be positive.");
-            _includeGenerated = includeGenerated;
-        }
+        public IEdgeStore EdgeStore { get; init; } = null!;
+        public IDeclarationStore DeclarationStore { get; init; } = null!;
+        public string SnapshotId { get; init; } = string.Empty;
+        public SymbolId SymbolId { get; init; } = null!;
+        public ContextIntent Intent { get; init; }
+        public int Budget { get; init; }
+        public int MaxHops { get; init; } = 3;
+        public bool IncludeGenerated { get; init; }
 
         public ContextCapsule Assemble()
         {
             var anchor = BuildAnchor();
             var capsule = new ContextCapsule(anchor)
             {
-                Budget = _budget,
+                Budget = Budget,
             };
 
             int runningTotal = EstimateTokens(anchor.Source);
@@ -44,7 +46,7 @@ namespace Lurp.Workspace
                 var items = build();
                 int tierCost = items.Sum(i => EstimateTokens(i.Source));
 
-                if (runningTotal + tierCost <= _budget)
+                if (runningTotal + tierCost <= Budget)
                 {
                     AddTierToCapsule(capsule, name, items);
                     runningTotal += tierCost;
@@ -54,7 +56,7 @@ namespace Lurp.Workspace
                     foreach (var item in items)
                     {
                         int itemCost = EstimateTokens(item.Source);
-                        if (runningTotal + itemCost > _budget)
+                        if (runningTotal + itemCost > Budget)
                             break;
                         AddTierToCapsule(capsule, name, new List<CapsuleItem> { item });
                         runningTotal += itemCost;
@@ -88,7 +90,7 @@ namespace Lurp.Workspace
                 ((Func<List<CapsuleItem>>)BuildSurroundingSiblings, "surroundingSource"),
             };
 
-            switch (_intent)
+            switch (Intent)
             {
                 case ContextIntent.Inspect:
                     return new (Func<List<CapsuleItem>> Build, string Name)[]
@@ -161,23 +163,23 @@ namespace Lurp.Workspace
 
         private CapsuleAnchor BuildAnchor()
         {
-            var info = _declarationStore.GetSymbolInfo(_symbolId.Value, _snapshotId);
+            var info = DeclarationStore.GetSymbolInfo(SymbolId.Value, SnapshotId);
             if (info == null)
             {
-                throw new InvalidOperationException($"Symbol '{_symbolId.Value}' not found in snapshot '{_snapshotId}'.");
+                throw new InvalidOperationException($"Symbol '{SymbolId.Value}' not found in snapshot '{SnapshotId}'.");
             }
 
-            var source = _declarationStore.GetSymbolSource(_symbolId.Value, _snapshotId, ViewKind.Declaration, _includeGenerated);
+            var source = DeclarationStore.GetSymbolSource(SymbolId.Value, SnapshotId, ViewKind.Declaration, IncludeGenerated);
             source ??= string.Empty;
 
-            return new CapsuleAnchor(symbolId: _symbolId.Value,fullyQualifiedName: info.FullyQualifiedName ?? _symbolId.Value,kind: info.Kind.ToString(),
+            return new CapsuleAnchor(symbolId: SymbolId.Value,fullyQualifiedName: info.FullyQualifiedName ?? SymbolId.Value,kind: info.Kind.ToString(),
                 source: source);
         }
 
         private List<CapsuleItem> BuildContracts()
         {
             var results = new List<CapsuleItem>();
-            var edges = _edgeStore.GetOutgoingEdges(_snapshotId, _symbolId.Value);
+            var edges = EdgeStore.GetOutgoingEdges(SnapshotId, SymbolId.Value);
 
             foreach (var edge in edges)
             {
@@ -206,8 +208,8 @@ namespace Lurp.Workspace
                 EdgeKind.Constructs.ToString()
             };
 
-            var traverser = new ImpactTraverser(_edgeStore, _snapshotId);
-            var paths = traverser.TraceImpact(symbolId: _symbolId.Value,direction: ImpactDirection.Downstream,allowedEdgeKinds: allowedKinds,maxDepth: 1);
+            var traverser = new ImpactTraverser(EdgeStore, SnapshotId);
+            var paths = traverser.TraceImpact(symbolId: SymbolId.Value,direction: ImpactDirection.Downstream,allowedEdgeKinds: allowedKinds,maxDepth: 1);
 
             var seen = new HashSet<string>();
             foreach (var path in paths)
@@ -237,8 +239,8 @@ namespace Lurp.Workspace
                 EdgeKind.Calls.ToString()
             };
 
-            var traverser = new ImpactTraverser(_edgeStore, _snapshotId);
-            var paths = traverser.TraceImpact(symbolId: _symbolId.Value,direction: ImpactDirection.Upstream,allowedEdgeKinds: allowedKinds,maxDepth: 1);
+            var traverser = new ImpactTraverser(EdgeStore, SnapshotId);
+            var paths = traverser.TraceImpact(symbolId: SymbolId.Value,direction: ImpactDirection.Upstream,allowedEdgeKinds: allowedKinds,maxDepth: 1);
 
             var seen = new HashSet<string>();
             foreach (var path in paths)
@@ -257,7 +259,7 @@ namespace Lurp.Workspace
                 }
             }
 
-            var incomingEdges = _edgeStore.GetIncomingEdges(_snapshotId, _symbolId.Value);
+            var incomingEdges = EdgeStore.GetIncomingEdges(SnapshotId, SymbolId.Value);
             foreach (var edge in incomingEdges)
             {
                 if (edge.Kind != EdgeKind.RoutesTo.ToString() &&
@@ -285,7 +287,7 @@ namespace Lurp.Workspace
             var results = new List<CapsuleItem>();
             var seen = new HashSet<string>();
 
-            var incomingEdges = _edgeStore.GetIncomingEdges(_snapshotId, _symbolId.Value);
+            var incomingEdges = EdgeStore.GetIncomingEdges(SnapshotId, SymbolId.Value);
             foreach (var edge in incomingEdges)
             {
                 if (edge.Kind != EdgeKind.MayDispatchTo.ToString() &&
@@ -305,7 +307,7 @@ namespace Lurp.Workspace
                 }
             }
 
-            var outgoingEdges = _edgeStore.GetOutgoingEdges(_snapshotId, _symbolId.Value);
+            var outgoingEdges = EdgeStore.GetOutgoingEdges(SnapshotId, SymbolId.Value);
             foreach (var edge in outgoingEdges)
             {
                 if (edge.Kind != EdgeKind.MayDispatchTo.ToString() &&
@@ -333,7 +335,7 @@ namespace Lurp.Workspace
         {
             var results = new List<CapsuleItem>();
 
-            var incomingEdges = _edgeStore.GetIncomingEdges(_snapshotId, _symbolId.Value);
+            var incomingEdges = EdgeStore.GetIncomingEdges(SnapshotId, SymbolId.Value);
             foreach (var edge in incomingEdges)
             {
                 if (edge.Kind != EdgeKind.TestedBy.ToString())
@@ -358,11 +360,11 @@ namespace Lurp.Workspace
                 EdgeKind.Calls.ToString()
             };
 
-            if (_maxHops <= 1)
+            if (MaxHops <= 1)
                 return results;
 
-            var traverser = new ImpactTraverser(_edgeStore, _snapshotId);
-            var paths = traverser.TraceImpact(symbolId: _symbolId.Value,direction: ImpactDirection.Upstream,allowedEdgeKinds: allowedKinds,maxDepth: _maxHops);
+            var traverser = new ImpactTraverser(EdgeStore, SnapshotId);
+            var paths = traverser.TraceImpact(symbolId: SymbolId.Value,direction: ImpactDirection.Upstream,allowedEdgeKinds: allowedKinds,maxDepth: MaxHops);
 
             var seen = new HashSet<string>();
             foreach (var path in paths)
@@ -373,7 +375,7 @@ namespace Lurp.Workspace
                     if (!seen.Add(neighborId))
                         continue;
 
-                    if (neighborId == _symbolId.Value)
+                    if (neighborId == SymbolId.Value)
                         continue;
 
                     var item = BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance);
@@ -391,7 +393,7 @@ namespace Lurp.Workspace
         {
             var results = new List<CapsuleItem>();
 
-            var incomingEdges = _edgeStore.GetIncomingEdges(_snapshotId, _symbolId.Value);
+            var incomingEdges = EdgeStore.GetIncomingEdges(SnapshotId, SymbolId.Value);
             string? parentId = null;
             foreach (var edge in incomingEdges)
             {
@@ -405,14 +407,14 @@ namespace Lurp.Workspace
             if (parentId == null)
                 return results;
 
-            var parentEdges = _edgeStore.GetOutgoingEdges(_snapshotId, parentId);
+            var parentEdges = EdgeStore.GetOutgoingEdges(SnapshotId, parentId);
             foreach (var edge in parentEdges)
             {
                 if (edge.Kind != EdgeKind.Contains.ToString())
                     continue;
 
                 var siblingId = edge.TargetSymbolId;
-                if (siblingId == _symbolId.Value)
+                if (siblingId == SymbolId.Value)
                     continue;
 
                 var item = BuildCapsuleItem(siblingId, EdgeKind.Contains.ToString(), edge.Provenance);
@@ -427,15 +429,15 @@ namespace Lurp.Workspace
 
         private CapsuleItem? BuildCapsuleItem(string symbolId, string edgeKind, string provenance)
         {
-            var info = _declarationStore.GetSymbolInfo(symbolId, _snapshotId);
+            var info = DeclarationStore.GetSymbolInfo(symbolId, SnapshotId);
             if (info == null)
                 return null;
 
-            var source = _declarationStore.GetSymbolSource(symbolId, _snapshotId, ViewKind.Declaration, _includeGenerated);
+            var source = DeclarationStore.GetSymbolSource(symbolId, SnapshotId, ViewKind.Declaration, IncludeGenerated);
 
-            if (!_includeGenerated && source == null)
+            if (!IncludeGenerated && source == null)
             {
-                var hasGeneratedOnly = _declarationStore.GetSymbolSource(symbolId, _snapshotId, ViewKind.Declaration, true) != null;
+                var hasGeneratedOnly = DeclarationStore.GetSymbolSource(symbolId, SnapshotId, ViewKind.Declaration, true) != null;
                 if (hasGeneratedOnly)
                     return null;
             }
@@ -449,7 +451,7 @@ namespace Lurp.Workspace
 
         private void PopulateUncertainties(ContextCapsule capsule)
         {
-            var neighborhood = new HashSet<string> { _symbolId.Value };
+            var neighborhood = new HashSet<string> { SymbolId.Value };
 
             void CollectFromItems(IEnumerable<CapsuleItem> items)
             {
@@ -465,8 +467,8 @@ namespace Lurp.Workspace
             CollectFromItems(capsule.SecondDegreeContext);
             CollectFromItems(capsule.SurroundingSource);
 
-            var anchorEdges = _edgeStore.GetIncomingEdges(_snapshotId, _symbolId.Value)
-                .Concat(_edgeStore.GetOutgoingEdges(_snapshotId, _symbolId.Value))
+            var anchorEdges = EdgeStore.GetIncomingEdges(SnapshotId, SymbolId.Value)
+                .Concat(EdgeStore.GetOutgoingEdges(SnapshotId, SymbolId.Value))
                 .ToList();
 
             foreach (var edge in anchorEdges)
@@ -477,8 +479,8 @@ namespace Lurp.Workspace
 
             foreach (var symbolId in neighborhood)
             {
-                var edges = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
-                    .Concat(_edgeStore.GetOutgoingEdges(_snapshotId, symbolId));
+                var edges = EdgeStore.GetIncomingEdges(SnapshotId, symbolId)
+                    .Concat(EdgeStore.GetOutgoingEdges(SnapshotId, symbolId));
 
                 foreach (var edge in edges)
                 {
@@ -495,7 +497,7 @@ namespace Lurp.Workspace
 
             foreach (var symbolId in neighborhood)
             {
-                var outgoing = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId);
+                var outgoing = EdgeStore.GetOutgoingEdges(SnapshotId, symbolId);
                 foreach (var edge in outgoing)
                 {
                     if (edge.Kind != EdgeKind.MayDispatchTo.ToString())
@@ -516,8 +518,8 @@ namespace Lurp.Workspace
 
             foreach (var symbolId in neighborhood)
             {
-                var edges = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
-                    .Concat(_edgeStore.GetOutgoingEdges(_snapshotId, symbolId));
+                var edges = EdgeStore.GetIncomingEdges(SnapshotId, symbolId)
+                    .Concat(EdgeStore.GetOutgoingEdges(SnapshotId, symbolId));
 
                 foreach (var edge in edges)
                 {
@@ -530,12 +532,12 @@ namespace Lurp.Workspace
                 }
             }
 
-            if (!_includeGenerated)
+            if (!IncludeGenerated)
             {
                 foreach (var symbolId in neighborhood)
                 {
-                    var hasGeneratedSource = _declarationStore.GetSymbolSource(symbolId, _snapshotId, ViewKind.Declaration, true);
-                    var hasNonGeneratedSource = _declarationStore.GetSymbolSource(symbolId, _snapshotId, ViewKind.Declaration, false);
+                    var hasGeneratedSource = DeclarationStore.GetSymbolSource(symbolId, SnapshotId, ViewKind.Declaration, true);
+                    var hasNonGeneratedSource = DeclarationStore.GetSymbolSource(symbolId, SnapshotId, ViewKind.Declaration, false);
 
                     if (hasGeneratedSource != null && hasNonGeneratedSource == null)
                     {
@@ -547,14 +549,14 @@ namespace Lurp.Workspace
 
         private void PopulateSuggestedVerification(ContextCapsule capsule)
         {
-            var incomingEdges = _edgeStore.GetIncomingEdges(_snapshotId, _symbolId.Value);
+            var incomingEdges = EdgeStore.GetIncomingEdges(SnapshotId, SymbolId.Value);
 
             foreach (var edge in incomingEdges)
             {
                 if (edge.Kind != EdgeKind.TestedBy.ToString())
                     continue;
 
-                var testInfo = _declarationStore.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
+                var testInfo = DeclarationStore.GetSymbolInfo(edge.SourceSymbolId, SnapshotId);
                 var testName = testInfo?.FullyQualifiedName ?? edge.SourceSymbolId;
 
                 capsule.SuggestedVerification.Add(new VerificationSuggestion(testId: edge.SourceSymbolId,testName: testName,description: $"Run '{testName}' to verify correctness after modifications."));
@@ -566,35 +568,62 @@ namespace Lurp.Workspace
             return (text ?? string.Empty).Length / 4;
         }
 
-        public static ContextCapsule ResolveAndAssemble(IIndexStore store,string snapshotId,string? symbolArg,string? fileArg,int? lineNumber,ContextIntent intent,int budget,int maxHops,bool includeGenerated)
+        public static ContextCapsule ResolveAndAssemble(IIndexStore store, ContextLookup lookup, ContextAssemblyOptions options)
         {
-            if (!string.IsNullOrEmpty(symbolArg))
+            if (!string.IsNullOrEmpty(lookup.SymbolArg))
             {
-                var symbolId = SymbolId.Parse(symbolArg!);
-                var assembler = new ContextAssembler(edgeStore: store,declarationStore: store,snapshotId: snapshotId,symbolId: symbolId,intent: intent,budget: budget,maxHops: maxHops,includeGenerated: includeGenerated);
+                var symbolId = SymbolId.Parse(lookup.SymbolArg!);
+                var assembler = new ContextAssembler
+                {
+                    EdgeStore = store,
+                    DeclarationStore = store,
+                    SnapshotId = lookup.SnapshotId,
+                    SymbolId = symbolId,
+                    Intent = options.Intent,
+                    Budget = options.Budget,
+                    MaxHops = options.MaxHops,
+                    IncludeGenerated = options.IncludeGenerated,
+                };
                 return assembler.Assemble();
             }
 
-            var resolvedId = store.ResolveSymbolByLocation(fileArg!, lineNumber!.Value, snapshotId, includeGenerated);
+            var resolvedId = store.ResolveSymbolByLocation(lookup.FileArg!, lookup.LineNumber!.Value, lookup.SnapshotId, options.IncludeGenerated);
 
             if (resolvedId == null)
             {
-                var gapAnchor = new CapsuleAnchor(symbolId: $"file://{fileArg}:{lineNumber}",fullyQualifiedName: $"<no symbol at {fileArg}:{lineNumber}>",kind: "gap",source: string.Empty);
+                var gapAnchor = new CapsuleAnchor(
+                    symbolId: $"file://{lookup.FileArg}:{lookup.LineNumber}",
+                    fullyQualifiedName: $"<no symbol at {lookup.FileArg}:{lookup.LineNumber}>",
+                    kind: "gap",
+                    source: string.Empty);
 
                 var gapCapsule = new ContextCapsule(gapAnchor)
                 {
-                    Budget = budget,
+                    Budget = options.Budget,
                     EstimatedTokens = 0,
                     Truncated = false,
                 };
 
-                gapCapsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { gapAnchor.SymbolId },"location_gap",$"No symbol found at {fileArg}:{lineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
+                gapCapsule.Uncertainties.Add(new UncertaintyEntry(
+                    new List<string> { gapAnchor.SymbolId },
+                    "location_gap",
+                    $"No symbol found at {lookup.FileArg}:{lookup.LineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
 
                 return gapCapsule;
             }
 
             var resolvedSymbolId = SymbolId.Parse(resolvedId);
-            var resolvedAssembler = new ContextAssembler(edgeStore: store,declarationStore: store,snapshotId: snapshotId,symbolId: resolvedSymbolId,intent: intent,budget: budget,maxHops: maxHops,includeGenerated: includeGenerated);
+            var resolvedAssembler = new ContextAssembler
+            {
+                EdgeStore = store,
+                DeclarationStore = store,
+                SnapshotId = lookup.SnapshotId,
+                SymbolId = resolvedSymbolId,
+                Intent = options.Intent,
+                Budget = options.Budget,
+                MaxHops = options.MaxHops,
+                IncludeGenerated = options.IncludeGenerated,
+            };
             return resolvedAssembler.Assemble();
         }
     }

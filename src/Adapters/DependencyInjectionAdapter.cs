@@ -12,6 +12,14 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     public string Name => "Dependency Injection";
     public string Version => "di-v1";
 
+    private sealed record ExtractionContext(
+        string AssemblyIdentity,
+        string SnapshotId,
+        string ExtractorVersion,
+        List<EdgeRecord> Edges,
+        HashSet<(string source, string target, string kind)> Seen
+    );
+
     private static readonly HashSet<string> ConventionMethodNames = new()
     {
         "Scan", "AddClasses", "AsImplementedInterfaces",
@@ -23,8 +31,14 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
 
-        var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-        var diExtractorVersion = ExtractorConstants.DependencyInjectionExtractor;
+        var ctx = new ExtractionContext(
+            AssemblyIdentity: compilation.Assembly.Identity.GetDisplayName(),
+            SnapshotId: snapshotId,
+            ExtractorVersion: ExtractorConstants.DependencyInjectionExtractor,
+            Edges: edges,
+            Seen: seen
+        );
+
         var serviceCollectionType = compilation.GetTypeByMetadataName("Microsoft.Extensions.DependencyInjection.IServiceCollection");
 
         foreach (var tree in compilation.SyntaxTrees)
@@ -41,25 +55,25 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
                 if (methodName is "AddScoped" or "AddTransient" or "AddSingleton")
                 {
-                    ProcessExplicitGeneric(invocation, methodSymbol, semanticModel,assemblyIdentity, snapshotId, edges, seen);
+                    ProcessExplicitGeneric(invocation, methodSymbol, semanticModel, ctx);
                     continue;
                 }
 
                 if (ConventionMethodNames.Contains(methodName))
                 {
-                    ProcessConventionCandidate(invocation, methodSymbol, semanticModel,compilation, assemblyIdentity, snapshotId, diExtractorVersion, edges, seen);
+                    ProcessConventionCandidate(invocation, methodSymbol, semanticModel, compilation, ctx);
                     continue;
                 }
 
                 if (methodName is "AddHostedService" or "Configure" or "AddOptions")
                 {
-                    ProcessRuntimeUnknown(invocation, semanticModel,assemblyIdentity, snapshotId, diExtractorVersion, edges, seen);
+                    ProcessRuntimeUnknown(invocation, semanticModel, ctx);
                     continue;
                 }
 
-                if (serviceCollectionType != null &&IsExternalMethodWithServiceCollectionParam(methodSymbol, compilation, serviceCollectionType))
+                if (serviceCollectionType != null && IsExternalMethodWithServiceCollectionParam(methodSymbol, compilation, serviceCollectionType))
                 {
-                    ProcessRuntimeUnknown(invocation, semanticModel,assemblyIdentity, snapshotId, diExtractorVersion, edges, seen);
+                    ProcessRuntimeUnknown(invocation, semanticModel, ctx);
                 }
             }
         }
@@ -67,7 +81,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         return edges;
     }
 
-    private static void ProcessExplicitGeneric(InvocationExpressionSyntax invocation,IMethodSymbol methodSymbol,SemanticModel semanticModel,string assemblyIdentity,string snapshotId,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
+    private static void ProcessExplicitGeneric(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, ExtractionContext ctx)
     {
         var containingType = methodSymbol.ContainingType;
         if (containingType == null)
@@ -77,7 +91,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var current = containingType;
         while (current != null)
         {
-            if (current.Name is "ServiceCollectionServiceExtensions" or"ExtensionsServiceCollectionExtensions" or"ServiceCollectionDescriptorExtensions")
+            if (current.Name is "ServiceCollectionServiceExtensions" or "ExtensionsServiceCollectionExtensions" or "ServiceCollectionDescriptorExtensions")
             {
                 isDiExtension = true;
                 break;
@@ -88,13 +102,13 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         if (!isDiExtension)
             return;
 
-        var sourceId = ResolveSourceId(invocation, semanticModel, assemblyIdentity);
+        var sourceId = ResolveSourceId(invocation, semanticModel, ctx.AssemblyIdentity);
         if (sourceId == null)
             return;
 
         var typeArgs = new List<ITypeSymbol>();
 
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&memberAccess.Name is GenericNameSyntax genericName)
+        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess && memberAccess.Name is GenericNameSyntax genericName)
         {
             foreach (var typeArg in genericName.TypeArgumentList.Arguments)
             {
@@ -119,54 +133,69 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
         if (typeArgs.Count >= 2)
         {
-            var implTypeId = MakeSymbolId(typeArgs[typeArgs.Count - 1], assemblyIdentity);
+            var implTypeId = MakeSymbolId(typeArgs[typeArgs.Count - 1], ctx.AssemblyIdentity);
             if (implTypeId != null)
             {
                 var key = (sourceId, implTypeId, EdgeKind.Registers.ToString());
-                if (seen.Add(key))
+                if (ctx.Seen.Add(key))
                 {
-                    edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: implTypeId,kind: EdgeKind.Registers.ToString(),
-                        provenance: "framework_derived",
-                        snapshotId: snapshotId,
-                        extractorVersion: "di-v1"));
+                    ctx.Edges.Add(new EdgeRecord
+                    {
+                        SourceSymbolId = sourceId,
+                        TargetSymbolId = implTypeId,
+                        Kind = EdgeKind.Registers.ToString(),
+                        Provenance = "framework_derived",
+                        SnapshotId = ctx.SnapshotId,
+                        ExtractorVersion = ctx.ExtractorVersion,
+                    });
                 }
             }
         }
         else if (typeArgs.Count == 1)
         {
-            var implTypeId = MakeSymbolId(typeArgs[0], assemblyIdentity);
+            var implTypeId = MakeSymbolId(typeArgs[0], ctx.AssemblyIdentity);
             if (implTypeId != null)
             {
                 var key = (sourceId, implTypeId, EdgeKind.Registers.ToString());
-                if (seen.Add(key))
+                if (ctx.Seen.Add(key))
                 {
-                    edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: implTypeId,kind: EdgeKind.Registers.ToString(),
-                        provenance: "framework_derived",
-                        snapshotId: snapshotId,
-                        extractorVersion: "di-v1"));
+                    ctx.Edges.Add(new EdgeRecord
+                    {
+                        SourceSymbolId = sourceId,
+                        TargetSymbolId = implTypeId,
+                        Kind = EdgeKind.Registers.ToString(),
+                        Provenance = "framework_derived",
+                        SnapshotId = ctx.SnapshotId,
+                        ExtractorVersion = ctx.ExtractorVersion,
+                    });
                 }
             }
         }
     }
 
 
-    private static void ProcessConventionCandidate(InvocationExpressionSyntax invocation,IMethodSymbol methodSymbol,SemanticModel semanticModel,Compilation compilation,string assemblyIdentity,string snapshotId,string extractorVersion,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
+    private static void ProcessConventionCandidate(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, Compilation compilation, ExtractionContext ctx)
     {
-        var sourceId = ResolveSourceId(invocation, semanticModel, assemblyIdentity);
+        var sourceId = ResolveSourceId(invocation, semanticModel, ctx.AssemblyIdentity);
         if (sourceId == null)
             return;
 
-        var assemblyName = TryExtractConventionAssemblyName(invocation, methodSymbol, semanticModel, compilation, assemblyIdentity);
+        var assemblyName = TryExtractConventionAssemblyName(invocation, methodSymbol, semanticModel, compilation, ctx.AssemblyIdentity);
 
         var targetId = $"convention:assembly_scan:{assemblyName}";
 
         var key = (sourceId, targetId, EdgeKind.Registers.ToString());
-        if (seen.Add(key))
+        if (ctx.Seen.Add(key))
         {
-            edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: EdgeKind.Registers.ToString(),
-                provenance: "convention",
-                snapshotId: snapshotId,
-                extractorVersion: extractorVersion));
+            ctx.Edges.Add(new EdgeRecord
+            {
+                SourceSymbolId = sourceId,
+                TargetSymbolId = targetId,
+                Kind = EdgeKind.Registers.ToString(),
+                Provenance = "convention",
+                SnapshotId = ctx.SnapshotId,
+                ExtractorVersion = ctx.ExtractorVersion,
+            });
         }
     }
 
@@ -222,9 +251,9 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         return fallback;
     }
 
-    private static void ProcessRuntimeUnknown(InvocationExpressionSyntax invocation,SemanticModel semanticModel,string assemblyIdentity,string snapshotId,string extractorVersion,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
+    private static void ProcessRuntimeUnknown(InvocationExpressionSyntax invocation, SemanticModel semanticModel, ExtractionContext ctx)
     {
-        var sourceId = ResolveSourceId(invocation, semanticModel, assemblyIdentity);
+        var sourceId = ResolveSourceId(invocation, semanticModel, ctx.AssemblyIdentity);
 
         if (sourceId == null)
             return;
@@ -233,9 +262,17 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
         var key = (sourceId, targetId, EdgeKind.Registers.ToString());
 
-        if (seen.Add(key))
+        if (ctx.Seen.Add(key))
         {
-            edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: EdgeKind.Registers.ToString(), provenance: "runtime_unknown", snapshotId: snapshotId, extractorVersion: extractorVersion));
+            ctx.Edges.Add(new EdgeRecord
+            {
+                SourceSymbolId = sourceId,
+                TargetSymbolId = targetId,
+                Kind = EdgeKind.Registers.ToString(),
+                Provenance = "runtime_unknown",
+                SnapshotId = ctx.SnapshotId,
+                ExtractorVersion = ctx.ExtractorVersion,
+            });
         }
     }
 

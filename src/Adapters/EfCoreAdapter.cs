@@ -42,10 +42,15 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     var key = (sourceId, entityTypeId, EdgeKind.MapsTo.ToString());
                     if (seen.Add(key))
                     {
-                        edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: entityTypeId,kind: EdgeKind.MapsTo.ToString(),
-                            provenance: "framework_derived",
-                            snapshotId: snapshotId,
-                            extractorVersion: Version));
+                        edges.Add(new EdgeRecord
+                        {
+                            SourceSymbolId = sourceId,
+                            TargetSymbolId = entityTypeId,
+                            Kind = EdgeKind.MapsTo.ToString(),
+                            Provenance = "framework_derived",
+                            SnapshotId = snapshotId,
+                            ExtractorVersion = Version,
+                        });
                     }
                 }
             }
@@ -86,10 +91,15 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                             var key = (configId, entityTypeId, EdgeKind.MapsTo.ToString());
                             if (seen.Add(key))
                             {
-                                edges.Add(new EdgeRecord(sourceSymbolId: configId,targetSymbolId: entityTypeId,kind: EdgeKind.MapsTo.ToString(),
-                                    provenance: "framework_derived",
-                                    snapshotId: snapshotId,
-                                    extractorVersion: Version));
+                                edges.Add(new EdgeRecord
+                                {
+                                    SourceSymbolId = configId,
+                                    TargetSymbolId = entityTypeId,
+                                    Kind = EdgeKind.MapsTo.ToString(),
+                                    Provenance = "framework_derived",
+                                    SnapshotId = snapshotId,
+                                    ExtractorVersion = Version,
+                                });
                             }
                         }
                     }
@@ -160,10 +170,15 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                             var key = (dbContextId, entityTypeId, EdgeKind.MapsTo.ToString());
                             if (seen.Add(key))
                             {
-                                edges.Add(new EdgeRecord(sourceSymbolId: dbContextId,targetSymbolId: entityTypeId,kind: EdgeKind.MapsTo.ToString(),
-                                    provenance: "framework_derived",
-                                    snapshotId: snapshotId,
-                                    extractorVersion: "efcore-v1"));
+                                edges.Add(new EdgeRecord
+                                {
+                                    SourceSymbolId = dbContextId,
+                                    TargetSymbolId = entityTypeId,
+                                    Kind = EdgeKind.MapsTo.ToString(),
+                                    Provenance = "framework_derived",
+                                    SnapshotId = snapshotId,
+                                    ExtractorVersion = "efcore-v1",
+                                });
                             }
                         }
                     }
@@ -190,10 +205,15 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                                     var key = (dbContextId, navTypeId, EdgeKind.References.ToString());
                                     if (seen.Add(key))
                                     {
-                                        edges.Add(new EdgeRecord(sourceSymbolId: dbContextId,targetSymbolId: navTypeId,kind: EdgeKind.References.ToString(),
-                                            provenance: "framework_derived",
-                                            snapshotId: snapshotId,
-                                            extractorVersion: "efcore-v1"));
+                                        edges.Add(new EdgeRecord
+                                        {
+                                            SourceSymbolId = dbContextId,
+                                            TargetSymbolId = navTypeId,
+                                            Kind = EdgeKind.References.ToString(),
+                                            Provenance = "framework_derived",
+                                            SnapshotId = snapshotId,
+                                            ExtractorVersion = "efcore-v1",
+                                        });
                                     }
                                 }
                             }

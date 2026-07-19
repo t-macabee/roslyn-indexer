@@ -89,7 +89,9 @@ public static class ContextHandler
                 }
             }
 
-            var capsule = ContextAssembler.ResolveAndAssemble(store, snapshotId, symbolArg, fileArg, lineNumber, intent, budget, maxHops, includeGenerated);
+            var lookup = new ContextLookup(snapshotId, symbolArg, fileArg, lineNumber);
+            var assemblyOptions = new ContextAssemblyOptions(intent, budget, maxHops, includeGenerated);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, lookup, assemblyOptions);
             WriteCapsuleOutput(capsule, outputDirArg);
         }
         finally

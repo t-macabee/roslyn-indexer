@@ -76,10 +76,15 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             var key = (requestId, handleMethodId, EdgeKind.Handles.ToString());
             if (seen.Add(key))
             {
-                edges.Add(new EdgeRecord(sourceSymbolId: requestId,targetSymbolId: handleMethodId,kind: EdgeKind.Handles.ToString(),
-                    provenance: "framework_derived",
-                    snapshotId: snapshotId,
-                    extractorVersion: Version));
+                edges.Add(new EdgeRecord
+                {
+                    SourceSymbolId = requestId,
+                    TargetSymbolId = handleMethodId,
+                    Kind = EdgeKind.Handles.ToString(),
+                    Provenance = "framework_derived",
+                    SnapshotId = snapshotId,
+                    ExtractorVersion = Version,
+                });
             }
         }
 

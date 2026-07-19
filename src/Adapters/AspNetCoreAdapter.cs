@@ -54,7 +54,15 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             var routeSourceId = $"route://{routeTemplate}";
             var routeKey = (routeSourceId, methodId, EdgeKind.RoutesTo.ToString());
             if (seen.Add(routeKey))
-                edges.Add(new EdgeRecord(sourceSymbolId: routeSourceId, targetSymbolId: methodId, kind: EdgeKind.RoutesTo.ToString(), provenance: "framework_derived", snapshotId: snapshotId, extractorVersion: Version));
+                edges.Add(new EdgeRecord
+                {
+                    SourceSymbolId = routeSourceId,
+                    TargetSymbolId = methodId,
+                    Kind = EdgeKind.RoutesTo.ToString(),
+                    Provenance = "framework_derived",
+                    SnapshotId = snapshotId,
+                    ExtractorVersion = Version,
+                });
         }
 
         if (!method.ReturnsVoid && method.ReturnType != null)
@@ -140,7 +148,15 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
     {
         ArgumentNullException.ThrowIfNull(assemblyIdentity);
 
-        return new EdgeRecord(sourceSymbolId: sourceId, targetSymbolId: targetId, kind: kind, provenance: "framework_derived", snapshotId: snapshotId, extractorVersion: "aspnetcore-v1");
+        return new EdgeRecord
+        {
+            SourceSymbolId = sourceId,
+            TargetSymbolId = targetId,
+            Kind = kind,
+            Provenance = "framework_derived",
+            SnapshotId = snapshotId,
+            ExtractorVersion = "aspnetcore-v1",
+        };
     }
 
     private static List<INamedTypeSymbol> GetAllNamedTypes(INamespaceSymbol ns)

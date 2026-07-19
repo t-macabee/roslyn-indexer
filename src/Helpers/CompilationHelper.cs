@@ -37,13 +37,18 @@ internal static class CompilationHelper
                 endColumn = span.EndLinePosition.Character;
             }
 
-            results.Add(new DiagnosticRecord(projectName: projectName,documentPath: documentPath,severity: diag.Severity.ToString(),
-                id: diag.Id,
-                message: diag.GetMessage(),
-                startLine: startLine,
-                startColumn: startColumn,
-                endLine: endLine,
-                endColumn: endColumn));
+            results.Add(new DiagnosticRecord
+            {
+                ProjectName = projectName,
+                DocumentPath = documentPath,
+                Severity = diag.Severity.ToString(),
+                Id = diag.Id,
+                Message = diag.GetMessage(),
+                StartLine = startLine,
+                StartColumn = startColumn,
+                EndLine = endLine,
+                EndColumn = endColumn,
+            });
         }
 
         return results;

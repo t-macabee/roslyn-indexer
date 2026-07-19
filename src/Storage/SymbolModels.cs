@@ -129,32 +129,17 @@ namespace Lurp.Storage
 
     public sealed class SymbolDeclaration
     {
-        public SymbolId SymbolId { get; }
-        public SymbolKind Kind { get; }
-        public string DocumentVersionId { get; }
-        public DeclarationSpan FullSpan { get; }
-        public DeclarationSpan SignatureSpan { get; }
-        public DeclarationSpan BodySpan { get; }
-        public DeclarationSpan NameSpan { get; }
-        public bool IsPartial { get; }
-        public string? MetadataJson { get; }
-        public bool IsGenerated { get; }
-        public string? GeneratorIdentity { get; }
-
-        public SymbolDeclaration(SymbolId symbolId,SymbolKind kind,string documentVersionId,DeclarationSpan fullSpan,DeclarationSpan signatureSpan,DeclarationSpan bodySpan,DeclarationSpan nameSpan,bool isPartial = false,string? metadataJson = null,bool isGenerated = false,string? generatorIdentity = null)
-        {
-            SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
-            Kind = kind;
-            DocumentVersionId = documentVersionId ?? throw new ArgumentNullException(nameof(documentVersionId));
-            FullSpan = fullSpan ?? throw new ArgumentNullException(nameof(fullSpan));
-            SignatureSpan = signatureSpan ?? throw new ArgumentNullException(nameof(signatureSpan));
-            BodySpan = bodySpan ?? throw new ArgumentNullException(nameof(bodySpan));
-            NameSpan = nameSpan ?? throw new ArgumentNullException(nameof(nameSpan));
-            IsPartial = isPartial;
-            MetadataJson = metadataJson;
-            IsGenerated = isGenerated;
-            GeneratorIdentity = generatorIdentity;
-        }
+        public SymbolId SymbolId { get; init; } = null!;
+        public SymbolKind Kind { get; init; }
+        public string DocumentVersionId { get; init; } = string.Empty;
+        public DeclarationSpan FullSpan { get; init; } = null!;
+        public DeclarationSpan SignatureSpan { get; init; } = null!;
+        public DeclarationSpan BodySpan { get; init; } = null!;
+        public DeclarationSpan NameSpan { get; init; } = null!;
+        public bool IsPartial { get; init; }
+        public string? MetadataJson { get; init; }
+        public bool IsGenerated { get; init; }
+        public string? GeneratorIdentity { get; init; }
     }
 }
 
