@@ -140,7 +140,7 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
             var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
 
             var snapshotId = SnapshotId.New();
-            var manifest = global::Lurp.SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
+            var manifest = global::Lurp.Snapshots.SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
             var snapshotIdStr = snapshotId.ToString();
 
             manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath: null);

@@ -65,7 +65,7 @@ public sealed class SnapshotStore : ISnapshotStore
         command.ExecuteNonQuery();
     }
 
-    public void SaveSnapshot(SnapshotManifest manifest)
+    public void SaveSnapshot(SnapshotRow manifest)
     {
         using var connection = CreateConnection();
         using var transaction = connection.BeginTransaction();
@@ -176,7 +176,7 @@ public sealed class SnapshotStore : ISnapshotStore
         command.ExecuteNonQuery();
     }
 
-    public SnapshotManifest? LoadLatestSnapshot(string workspaceId)
+    public SnapshotRow? LoadLatestSnapshot(string workspaceId)
     {
         using var connection = CreateConnection();
         using var command = connection.CreateCommand();
@@ -232,7 +232,7 @@ public sealed class SnapshotStore : ISnapshotStore
             });
         }
 
-        return new SnapshotManifest
+        return new SnapshotRow
         {
             SnapshotId = snapshotId,
             WorkspaceId = workspaceIdStr,

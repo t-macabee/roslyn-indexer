@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using Microsoft.Data.Sqlite;
 using Lurp.Adapters;
+using Lurp.Snapshots;
 using Lurp.Storage;
 using Lurp.Workspace;
 using DocumentId = Lurp.Workspace.DocumentId;
@@ -1571,22 +1572,26 @@ class Derived : Base {
 
             var changes = new List<SemanticChange>
             {
-                new SemanticChange(
-                    changeId: "change-1",
-                    fromSnapshotId: fromSnapshotId,
-                    toSnapshotId: toSnapshotId,
-                    changeType: ChangeType.SymbolAdded,
-                    symbolId: "M:Ns.Foo|asm1",
-                    detailJson: "{\"symbol_id\": \"M:Ns.Foo|asm1\"}",
-                    createdAtUtc: DateTime.UtcNow),
-                new SemanticChange(
-                    changeId: "change-2",
-                    fromSnapshotId: fromSnapshotId,
-                    toSnapshotId: toSnapshotId,
-                    changeType: ChangeType.SymbolRemoved,
-                    symbolId: "M:Ns.Bar|asm1",
-                    detailJson: "{\"symbol_id\": \"M:Ns.Bar|asm1\"}",
-                    createdAtUtc: DateTime.UtcNow),
+                new SemanticChange
+                {
+                    ChangeId = "change-1",
+                    FromSnapshotId = fromSnapshotId,
+                    ToSnapshotId = toSnapshotId,
+                    ChangeType = ChangeType.SymbolAdded,
+                    SymbolId = "M:Ns.Foo|asm1",
+                    DetailJson = "{\"symbol_id\": \"M:Ns.Foo|asm1\"}",
+                    CreatedAtUtc = DateTime.UtcNow
+                },
+                new SemanticChange
+                {
+                    ChangeId = "change-2",
+                    FromSnapshotId = fromSnapshotId,
+                    ToSnapshotId = toSnapshotId,
+                    ChangeType = ChangeType.SymbolRemoved,
+                    SymbolId = "M:Ns.Bar|asm1",
+                    DetailJson = "{\"symbol_id\": \"M:Ns.Bar|asm1\"}",
+                    CreatedAtUtc = DateTime.UtcNow
+                },
             };
 
             store.SaveSemanticChanges(fromSnapshotId, toSnapshotId, changes);

@@ -6,11 +6,15 @@ namespace Lurp.Workspace
 
     public class SemanticDiffer
     {
-        private readonly IIndexStore _store;
+        private readonly ISnapshotStore _snapshotStore;
+        private readonly IDeclarationStore _declarationStore;
+        private readonly IEdgeStore _edgeStore;
 
-        public SemanticDiffer(IIndexStore store)
+        public SemanticDiffer(ISnapshotStore snapshotStore, IDeclarationStore declarationStore, IEdgeStore edgeStore)
         {
-            _store = store ?? throw new ArgumentNullException(nameof(store));
+            _snapshotStore = snapshotStore ?? throw new ArgumentNullException(nameof(snapshotStore));
+            _declarationStore = declarationStore ?? throw new ArgumentNullException(nameof(declarationStore));
+            _edgeStore = edgeStore ?? throw new ArgumentNullException(nameof(edgeStore));
         }
 
         public List<SemanticChange> ComputeDiff(string fromSnapshotId, string toSnapshotId)
@@ -43,8 +47,8 @@ namespace Lurp.Workspace
 
             foreach (var symbolId in common)
             {
-                var fromInfo = _store.GetSymbolInfo(symbolId, fromSnapshotId);
-                var toInfo = _store.GetSymbolInfo(symbolId, toSnapshotId);
+                var fromInfo = _declarationStore.GetSymbolInfo(symbolId, fromSnapshotId);
+                var toInfo = _declarationStore.GetSymbolInfo(symbolId, toSnapshotId);
 
                 if (fromInfo == null || toInfo == null)
                     continue;
@@ -75,8 +79,8 @@ namespace Lurp.Workspace
                 changes.AddRange(sourceChanges);
             }
 
-            var fromEdges = _store.GetEdges(fromSnapshotId);
-            var toEdges = _store.GetEdges(toSnapshotId);
+            var fromEdges = _edgeStore.GetEdges(fromSnapshotId);
+            var toEdges = _edgeStore.GetEdges(toSnapshotId);
 
             var fromEdgeSet = new HashSet<(string source, string target, string kind)>(fromEdges.Select(e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind)));
             var toEdgeSet = new HashSet<(string source, string target, string kind)>(toEdges.Select(e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind)));
@@ -104,7 +108,7 @@ namespace Lurp.Workspace
 
         private List<string> GetSymbolIdsInSnapshot(string snapshotId)
         {
-            return _store.GetSymbolIdsInSnapshot(snapshotId);
+            return _snapshotStore.GetSymbolIdsInSnapshot(snapshotId);
         }
 
         private List<SemanticChange> CompareMetadata(string symbolId, string? fromJson, string? toJson, string fromSnapshotId, string toSnapshotId)
@@ -154,14 +158,14 @@ namespace Lurp.Workspace
         {
             var changes = new List<SemanticChange>();
 
-            var fromSig = _store.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Signature);
-            var toSig = _store.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Signature);
+            var fromSig = _declarationStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Signature);
+            var toSig = _declarationStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Signature);
 
             if (fromSig == null || toSig == null)
                 return changes;
 
-            var fromBody = _store.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Body);
-            var toBody = _store.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Body);
+            var fromBody = _declarationStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Body);
+            var toBody = _declarationStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Body);
 
             if (fromSig == toSig)
             {
@@ -209,13 +213,16 @@ namespace Lurp.Workspace
 
         private static SemanticChange MakeChange(string? fromSnapshotId, string? toSnapshotId, string changeType, string symbolId, object? detail)
         {
-            return new SemanticChange(changeId: Guid.NewGuid().ToString("N"),
-                fromSnapshotId: fromSnapshotId ?? string.Empty,
-                toSnapshotId: toSnapshotId ?? string.Empty,
-                changeType: changeType,
-                symbolId: symbolId,
-                detailJson: detail != null ? JsonSerializer.Serialize(detail) : null,
-                createdAtUtc: DateTime.UtcNow);
+            return new SemanticChange
+            {
+                ChangeId = Guid.NewGuid().ToString("N"),
+                FromSnapshotId = fromSnapshotId ?? string.Empty,
+                ToSnapshotId = toSnapshotId ?? string.Empty,
+                ChangeType = changeType,
+                SymbolId = symbolId,
+                DetailJson = detail != null ? JsonSerializer.Serialize(detail) : null,
+                CreatedAtUtc = DateTime.UtcNow
+            };
         }
     }
 }

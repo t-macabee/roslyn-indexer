@@ -1,8 +1,6 @@
-using System.Text.Json.Serialization;
-
 namespace Lurp.Storage
 {
-    public class SnapshotManifest
+    public class SnapshotRow
     {
         public string SnapshotId { get; init; } = string.Empty;
         public string WorkspaceId { get; init; } = string.Empty;
@@ -73,25 +71,13 @@ namespace Lurp.Storage
 
     public sealed class SemanticChange
     {
-        [JsonConstructor]
-        public SemanticChange(string changeId,string fromSnapshotId,string toSnapshotId,string changeType,string symbolId,string? detailJson,DateTime createdAtUtc)
-        {
-            ChangeId = changeId ?? throw new ArgumentNullException(nameof(changeId));
-            FromSnapshotId = fromSnapshotId ?? throw new ArgumentNullException(nameof(fromSnapshotId));
-            ToSnapshotId = toSnapshotId ?? throw new ArgumentNullException(nameof(toSnapshotId));
-            ChangeType = changeType ?? throw new ArgumentNullException(nameof(changeType));
-            SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
-            DetailJson = detailJson;
-            CreatedAtUtc = createdAtUtc;
-        }
-
-        public string ChangeId { get; }
-        public string FromSnapshotId { get; }
-        public string ToSnapshotId { get; }
-        public string ChangeType { get; }
-        public string SymbolId { get; }
-        public string? DetailJson { get; }
-        public DateTime CreatedAtUtc { get; }
+        public string ChangeId { get; init; } = string.Empty;
+        public string FromSnapshotId { get; init; } = string.Empty;
+        public string ToSnapshotId { get; init; } = string.Empty;
+        public string ChangeType { get; init; } = string.Empty;
+        public string SymbolId { get; init; } = string.Empty;
+        public string? DetailJson { get; init; }
+        public DateTime CreatedAtUtc { get; init; }
     }
 
     public class DocumentVersion

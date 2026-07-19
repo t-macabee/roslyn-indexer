@@ -65,10 +65,20 @@ public sealed class PolymorphismExtractor
     /// For every type that implements an interface, emit a may_dispatch_to edge
     /// from each interface member to the effective implementation.
     ///
+    /// Dispatch resolution strategy:
+    ///   For each concrete type, iterate over AllInterfaces and their members.
+    ///   Use Roslyn's FindImplementationForInterfaceMember to resolve the
+    ///   effective implementation (which may be inherited from a base type).
+    ///   Then classify provenance: "compiler_proved" if the implementing member
+    ///   is declared directly on the type itself, "possible" if inherited
+    ///   (still a valid target, but a derived type could re-implement the
+    ///   interface in a future compilation, changing the dispatch).
+    ///
     /// Provenance:
     ///   "compiler_proved" when the implementing member is declared directly on
     ///   the type (not inherited from a base type).
-    ///   "possible" when inherited (still a valid target, but a derived type///   could re-implement the interface in a future compilation).
+    ///   "possible" when inherited (still a valid target, but a derived type
+    ///   could re-implement the interface in a future compilation).
     /// </summary>
     private void ExtractInterfaceDispatches(List<INamedTypeSymbol> allTypes,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
     {

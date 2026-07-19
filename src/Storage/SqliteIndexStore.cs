@@ -28,10 +28,10 @@
 
         public void SaveWorkspace(string id, string gitRoot, string solutionPath, DateTime createdAtUtc)
             => _snapshotStore.SaveWorkspace(id, gitRoot, solutionPath, createdAtUtc);
-        public void SaveSnapshot(Storage.SnapshotManifest manifest) => _snapshotStore.SaveSnapshot(manifest);
+        public void SaveSnapshot(SnapshotRow manifest) => _snapshotStore.SaveSnapshot(manifest);
         public void MarkSnapshotInProgress(string snapshotId) => _snapshotStore.MarkSnapshotInProgress(snapshotId);
         public void MarkSnapshotComplete(string snapshotId) => _snapshotStore.MarkSnapshotComplete(snapshotId);
-        public Storage.SnapshotManifest? LoadLatestSnapshot(string workspaceId) => _snapshotStore.LoadLatestSnapshot(workspaceId);
+        public SnapshotRow? LoadLatestSnapshot(string workspaceId) => _snapshotStore.LoadLatestSnapshot(workspaceId);
         public string? GetLatestSnapshotId(string? workspaceId = null) => _snapshotStore.GetLatestSnapshotId(workspaceId);
         public string? GetSource(string relativePath, string snapshotId) => _snapshotStore.GetSource(relativePath, snapshotId);
         public List<string> GetSnapshotIds(string workspaceId) => _snapshotStore.GetSnapshotIds(workspaceId);

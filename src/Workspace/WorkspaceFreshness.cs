@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using Lurp.Snapshots;
 using Lurp.Storage;
 namespace Lurp.Workspace;
 

@@ -3,6 +3,7 @@ using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using System.Diagnostics;
+using Lurp.Snapshots;
 
 namespace Lurp.Workspace;
 
@@ -103,7 +104,7 @@ public static class IndexRunner
 
         Console.Write("Saving snapshot to database... ");
 
-        manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath);
+        manifest.Save(store, store, workspaceInfo.DocumentContents, jsonExportPath);
 
         Console.WriteLine("done.");
 
@@ -149,7 +150,7 @@ public static class IndexRunner
                 Console.WriteLine();
                 Console.Write("Computing semantic diff from previous snapshot... ");
 
-                var differ = new SemanticDiffer(store);
+                var differ = new SemanticDiffer(store, store, store);
                 var diffChanges = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
 
                 store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);

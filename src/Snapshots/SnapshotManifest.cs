@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 using Lurp.Storage;
 using Lurp.Workspace;
 
-namespace Lurp;
+namespace Lurp.Snapshots;
 
 public sealed class SnapshotManifest
 {
@@ -81,14 +81,16 @@ public sealed class SnapshotManifest
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public void Save(IIndexStore store,IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
+    public void Save(ISnapshotStore snapshotStore, ISearchStore searchStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
         string? jsonExportPath = null)
     {
-        if (store == null)
-            throw new ArgumentNullException(nameof(store));
+        if (snapshotStore == null)
+            throw new ArgumentNullException(nameof(snapshotStore));
+        if (searchStore == null)
+            throw new ArgumentNullException(nameof(searchStore));
 
-        store.SaveSnapshot(ToStorageManifest(contents));
-        store.BuildSearchIndex(SnapshotId.ToString());
+        snapshotStore.SaveSnapshot(ToStorageManifest(contents));
+        searchStore.BuildSearchIndex(SnapshotId.ToString());
 
         if (jsonExportPath != null)
         {
@@ -104,7 +106,7 @@ public sealed class SnapshotManifest
                ?? throw new InvalidOperationException("Failed to deserialize snapshot manifest.");
     }
 
-    internal Storage.SnapshotManifest ToStorageManifest(IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
+    internal Storage.SnapshotRow ToStorageManifest(IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
     {
         var documents = DocumentVersions.Select(kvp =>{var docId = kvp.Key;var docPath = docId.ToString();
             byte[]? content = null;
@@ -131,7 +133,7 @@ public sealed class SnapshotManifest
             };
         }).ToList();
 
-        return new Storage.SnapshotManifest
+        return new Storage.SnapshotRow
         {
             SnapshotId = SnapshotId.ToString(),
             WorkspaceId = WorkspaceId.Value,
@@ -144,7 +146,7 @@ public sealed class SnapshotManifest
         };
     }
 
-    internal static SnapshotManifest FromStorageManifest(Storage.SnapshotManifest storage)
+    internal static SnapshotManifest FromStorageManifest(Storage.SnapshotRow storage)
     {
         var documentVersions = new Dictionary<DocumentId, DocumentVersionId>();
         foreach (var doc in storage.Documents)

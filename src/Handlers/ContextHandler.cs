@@ -92,7 +92,7 @@ internal static class ContextHandler
 
             var lookup = new ContextLookup(snapshotId, symbolArg, fileArg, lineNumber);
             var assemblyOptions = new ContextAssemblyOptions(intent, budget, maxHops, includeGenerated);
-            var capsule = ContextAssembler.ResolveAndAssemble(store, lookup, assemblyOptions);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions);
             WriteCapsuleOutput(capsule, outputDirArg);
         }
         finally

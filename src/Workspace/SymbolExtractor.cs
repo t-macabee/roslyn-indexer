@@ -237,6 +237,12 @@ public sealed class SymbolExtractor
         }
     }
 
+    // Computes four byte-offset spans for a declaration node:
+    //   full      — entire syntax node (including trivia/braces)
+    //   signature — from node start up to the body start (or node end if no body)
+    //   body      — the body block (null if no body, e.g. abstract/property)
+    //   name      — the identifier token span
+    // All offsets are converted from char offsets to byte offsets using the document encoding.
     private static (DeclarationSpan full, DeclarationSpan signature, DeclarationSpan body, DeclarationSpan name)
         ComputeSpans(SyntaxNode node, string sourceText, Encoding encoding)
     {

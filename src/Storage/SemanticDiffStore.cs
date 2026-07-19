@@ -71,14 +71,17 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            results.Add(new SemanticChange(changeId: reader.GetString(0),
-                fromSnapshotId: reader.GetString(1),
-                toSnapshotId: reader.GetString(2),
-                changeType: reader.GetString(3),
-                symbolId: reader.GetString(4),
-                detailJson: reader.IsDBNull(5) ? null : reader.GetString(5),
-                createdAtUtc: DateTime.Parse(reader.GetString(6), CultureInfo.InvariantCulture,
-                    DateTimeStyles.RoundtripKind)));
+            results.Add(new SemanticChange
+            {
+                ChangeId = reader.GetString(0),
+                FromSnapshotId = reader.GetString(1),
+                ToSnapshotId = reader.GetString(2),
+                ChangeType = reader.GetString(3),
+                SymbolId = reader.GetString(4),
+                DetailJson = reader.IsDBNull(5) ? null : reader.GetString(5),
+                CreatedAtUtc = DateTime.Parse(reader.GetString(6), CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind)
+            });
         }
         return results;
     }

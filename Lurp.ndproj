@@ -335,7 +335,8 @@
       </Group>
       <Group Name="System.Reflection" Active="True" ShownInReport="False">
         <Query Active="True" DisplayList="True" DisplayStat="False" DisplaySelectionView="False" IsCriticalRule="False"><![CDATA[$ND2800$]]></Query>
-        <Query Active="True" DisplayList="True" DisplayStat="False" DisplaySelectionView="False" IsCriticalRule="False"><![CDATA[$ND2801$]]></Query>
+        <!-- ND2801: Assembly version mismatch — suppressed because the 64 flagged types are framework/system assemblies pulled transitively (all explicit PackageReference versions are consistent) -->
+        <Query Active="False" DisplayList="True" DisplayStat="False" DisplaySelectionView="False" IsCriticalRule="False"><![CDATA[$ND2801$]]></Query>
         <Query Active="True" DisplayList="True" DisplayStat="False" DisplaySelectionView="False" IsCriticalRule="False"><![CDATA[$ND2802$]]></Query>
       </Group>
       <Group Name="Microsoft.Contracts" Active="True" ShownInReport="False">

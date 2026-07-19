@@ -2,21 +2,21 @@ using Lurp.Storage;
 
 namespace Lurp.Workspace
 {
-    public sealed record ContextLookup(
+    internal sealed record ContextLookup(
         string SnapshotId,
         string? SymbolArg,
         string? FileArg,
         int? LineNumber
     );
 
-    public sealed record ContextAssemblyOptions(
+    internal sealed record ContextAssemblyOptions(
         ContextIntent Intent,
         int Budget,
         int MaxHops = 3,
         bool IncludeGenerated = false
     );
 
-    public sealed class ContextAssembler
+    internal sealed class ContextAssembler
     {
         public IEdgeStore EdgeStore { get; init; } = null!;
         public IDeclarationStore DeclarationStore { get; init; } = null!;
@@ -71,8 +71,8 @@ namespace Lurp.Workspace
             capsule.Truncated = truncated;
             capsule.TruncatedCategories = truncatedCategories;
 
-            PopulateUncertainties(capsule);
-            PopulateSuggestedVerification(capsule);
+            new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated)
+                .Detect(capsule);
 
             return capsule;
         }
@@ -449,134 +449,20 @@ namespace Lurp.Workspace
                 source: source);
         }
 
-        private void PopulateUncertainties(ContextCapsule capsule)
-        {
-            var neighborhood = new HashSet<string> { SymbolId.Value };
-
-            void CollectFromItems(IEnumerable<CapsuleItem> items)
-            {
-                foreach (var item in items)
-                    neighborhood.Add(item.SymbolId);
-            }
-
-            CollectFromItems(capsule.Contracts);
-            CollectFromItems(capsule.DirectCallees);
-            CollectFromItems(capsule.DirectCallers);
-            CollectFromItems(capsule.RegisteredImplementations);
-            CollectFromItems(capsule.RelevantTests);
-            CollectFromItems(capsule.SecondDegreeContext);
-            CollectFromItems(capsule.SurroundingSource);
-
-            var anchorEdges = EdgeStore.GetIncomingEdges(SnapshotId, SymbolId.Value)
-                .Concat(EdgeStore.GetOutgoingEdges(SnapshotId, SymbolId.Value))
-                .ToList();
-
-            foreach (var edge in anchorEdges)
-            {
-                neighborhood.Add(edge.SourceSymbolId);
-                neighborhood.Add(edge.TargetSymbolId);
-            }
-
-            foreach (var symbolId in neighborhood)
-            {
-                var edges = EdgeStore.GetIncomingEdges(SnapshotId, symbolId)
-                    .Concat(EdgeStore.GetOutgoingEdges(SnapshotId, symbolId));
-
-                foreach (var edge in edges)
-                {
-                    if (edge.Kind == EdgeKind.ReflectionNameCandidate.ToString())
-                    {
-                        capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },edge.Kind,$"Reflection name candidate: the string-based reference to '{edge.TargetSymbolId}' was matched by name. Verify that this reference correctly resolves at runtime."));
-                    }
-                    else if (edge.Kind == EdgeKind.ReflectionTargetUnknown.ToString())
-                    {
-                        capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },edge.Kind,"Unknown reflection target: the runtime target of this reflection call cannot be statically determined."));
-                    }
-                }
-            }
-
-            foreach (var symbolId in neighborhood)
-            {
-                var outgoing = EdgeStore.GetOutgoingEdges(SnapshotId, symbolId);
-                foreach (var edge in outgoing)
-                {
-                    if (edge.Kind != EdgeKind.MayDispatchTo.ToString())
-                        continue;
-                    if (edge.Provenance == "compiler_proved" || edge.Provenance == "framework_derived")
-                        continue;
-
-                    capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },edge.Kind,$"Dispatch candidate '{edge.TargetSymbolId}' was resolved with evidence level '{edge.Provenance}'. Manually verify that the runtime dispatch reaches the correct implementation."));
-                }
-            }
-
-            var frameworkKinds = new HashSet<string>
-            {
-                EdgeKind.RoutesTo.ToString(),
-                EdgeKind.Handles.ToString(),
-                EdgeKind.Registers.ToString()
-            };
-
-            foreach (var symbolId in neighborhood)
-            {
-                var edges = EdgeStore.GetIncomingEdges(SnapshotId, symbolId)
-                    .Concat(EdgeStore.GetOutgoingEdges(SnapshotId, symbolId));
-
-                foreach (var edge in edges)
-                {
-                    if (!frameworkKinds.Contains(edge.Kind))
-                        continue;
-                    if (edge.Provenance != "convention")
-                        continue;
-
-                    capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },edge.Kind,$"Convention-based framework binding: the '{edge.Kind}' edge was inferred by naming convention, not explicit registration. Verify that the expected target is reached at runtime."));
-                }
-            }
-
-            if (!IncludeGenerated)
-            {
-                foreach (var symbolId in neighborhood)
-                {
-                    var hasGeneratedSource = DeclarationStore.GetSymbolSource(symbolId, SnapshotId, ViewKind.Declaration, true);
-                    var hasNonGeneratedSource = DeclarationStore.GetSymbolSource(symbolId, SnapshotId, ViewKind.Declaration, false);
-
-                    if (hasGeneratedSource != null && hasNonGeneratedSource == null)
-                    {
-                        capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { symbolId },"generated_excluded",$"Generated symbol '{symbolId}' was excluded because includeGenerated is set to false. Review generated code if runtime behavior depends on it."));
-                    }
-                }
-            }
-        }
-
-        private void PopulateSuggestedVerification(ContextCapsule capsule)
-        {
-            var incomingEdges = EdgeStore.GetIncomingEdges(SnapshotId, SymbolId.Value);
-
-            foreach (var edge in incomingEdges)
-            {
-                if (edge.Kind != EdgeKind.TestedBy.ToString())
-                    continue;
-
-                var testInfo = DeclarationStore.GetSymbolInfo(edge.SourceSymbolId, SnapshotId);
-                var testName = testInfo?.FullyQualifiedName ?? edge.SourceSymbolId;
-
-                capsule.SuggestedVerification.Add(new VerificationSuggestion(testId: edge.SourceSymbolId,testName: testName,description: $"Run '{testName}' to verify correctness after modifications."));
-            }
-        }
-
         private static int EstimateTokens(string? text)
         {
             return (text ?? string.Empty).Length / 4;
         }
 
-        public static ContextCapsule ResolveAndAssemble(IIndexStore store, ContextLookup lookup, ContextAssemblyOptions options)
+        public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options)
         {
             if (!string.IsNullOrEmpty(lookup.SymbolArg))
             {
                 var symbolId = SymbolId.Parse(lookup.SymbolArg!);
                 var assembler = new ContextAssembler
                 {
-                    EdgeStore = store,
-                    DeclarationStore = store,
+                    EdgeStore = edgeStore,
+                    DeclarationStore = declarationStore,
                     SnapshotId = lookup.SnapshotId,
                     SymbolId = symbolId,
                     Intent = options.Intent,
@@ -587,7 +473,7 @@ namespace Lurp.Workspace
                 return assembler.Assemble();
             }
 
-            var resolvedId = store.ResolveSymbolByLocation(lookup.FileArg!, lookup.LineNumber!.Value, lookup.SnapshotId, options.IncludeGenerated);
+            var resolvedId = declarationStore.ResolveSymbolByLocation(lookup.FileArg!, lookup.LineNumber!.Value, lookup.SnapshotId, options.IncludeGenerated);
 
             if (resolvedId == null)
             {
@@ -615,8 +501,8 @@ namespace Lurp.Workspace
             var resolvedSymbolId = SymbolId.Parse(resolvedId);
             var resolvedAssembler = new ContextAssembler
             {
-                EdgeStore = store,
-                DeclarationStore = store,
+                EdgeStore = edgeStore,
+                DeclarationStore = declarationStore,
                 SnapshotId = lookup.SnapshotId,
                 SymbolId = resolvedSymbolId,
                 Intent = options.Intent,

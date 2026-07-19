@@ -1,4 +1,5 @@
-﻿using Lurp.Storage;
+﻿using Lurp.Snapshots;
+using Lurp.Storage;
 using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
@@ -12,9 +13,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
     private readonly HashSet<string> _skipAdapters = skipAdapters;
     private readonly string? _jsonExportPath = jsonExportPath;
 
-    public sealed record DocumentChangeInfo(string RelativePath, DocumentChangeKind ChangeKind, string? OldDocumentVersionId = null);
+    private sealed record DocumentChangeInfo(string RelativePath, DocumentChangeKind ChangeKind, string? OldDocumentVersionId = null);
 
-    public enum DocumentChangeKind
+    private enum DocumentChangeKind
     {
         Unchanged,
         Changed,
@@ -22,12 +23,21 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         Deleted
     }
 
-    public sealed record IncrementalResult(string NewSnapshotId, string PreviousSnapshotId, int ChangedDocumentCount, int DeclarationsExtracted, int EdgesExtracted, int DiagnosticsExtracted)
+    internal sealed record IncrementalResult(string NewSnapshotId, string PreviousSnapshotId, int ChangedDocumentCount, int DeclarationsExtracted, int EdgesExtracted, int DiagnosticsExtracted)
     {
         public bool HasChanges => ChangedDocumentCount > 0 || DeclarationsExtracted > 0 || EdgesExtracted > 0;
     }
 
-    public async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, Storage.SnapshotManifest previousManifest)
+    // Incremental indexing strategy:
+    //   1. Hash all documents and compare against the previous manifest to find changed/new/deleted files.
+    //   2. Identify which projects are affected by the changes.
+    //   3. Load compilations only for affected projects (skip unchanged ones).
+    //   4. Create a new snapshot manifest, copy forward edges/diagnostics/symbols from the previous snapshot.
+    //   5. Remove stale data (edges for changed documents, declarations by old version ids, diagnostics).
+    //   6. Re-extract declarations, edges, and diagnostics from affected compilations.
+    //   7. Refresh cross-document edges for documents that reference changed symbols.
+    //   8. Rebuild the FTS5 search index and compute a semantic diff against the previous snapshot.
+    internal async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, Storage.SnapshotRow previousManifest)
     {
         var previousSnapshotId = previousManifest.SnapshotId;
         var previousRichManifest = SnapshotManifest.FromStorageManifest(previousManifest);
@@ -50,7 +60,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId));
 
         Console.Write("Saving new snapshot manifest... ");
-        newManifest.Save(_store, workspaceInfo.DocumentContents, _jsonExportPath);
+        newManifest.Save(_store, _store, workspaceInfo.DocumentContents, _jsonExportPath);
         Console.WriteLine("done.");
 
         _store.MarkSnapshotInProgress(newSnapshotIdStr);
@@ -198,7 +208,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         Console.Write("Computing semantic diff from previous snapshot... ");
         try
         {
-            var differ = new SemanticDiffer(_store);
+            var differ = new SemanticDiffer(_store, _store, _store);
             var diffChanges = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr);
             _store.SaveSemanticChanges(previousSnapshotId, newSnapshotIdStr, diffChanges);
             Console.WriteLine($"done ({diffChanges.Count} changes).");

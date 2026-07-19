@@ -2,14 +2,14 @@ using System.Text.Json.Serialization;
 
 namespace Lurp.Workspace
 {
-    public enum ContextIntent
+    internal enum ContextIntent
     {
         Inspect,
         Modify,
         Diagnose
     }
 
-    public sealed class CapsuleAnchor
+    internal sealed class CapsuleAnchor
     {
         [JsonPropertyName("symbolId")]
         public string SymbolId { get; init; }
@@ -32,7 +32,7 @@ namespace Lurp.Workspace
         }
     }
 
-    public sealed class CapsuleItem
+    internal sealed class CapsuleItem
     {
         [JsonPropertyName("symbolId")]
         public string SymbolId { get; init; }
@@ -63,7 +63,7 @@ namespace Lurp.Workspace
         }
     }
 
-    public sealed class UncertaintyEntry
+    internal sealed class UncertaintyEntry
     {
         [JsonPropertyName("symbolIds")]
         public List<string> SymbolIds { get; init; }
@@ -82,7 +82,7 @@ namespace Lurp.Workspace
         }
     }
 
-    public sealed class VerificationSuggestion
+    internal sealed class VerificationSuggestion
     {
         [JsonPropertyName("testId")]
         public string TestId { get; init; }
@@ -101,7 +101,7 @@ namespace Lurp.Workspace
         }
     }
 
-    public sealed class ContextCapsule
+    internal sealed class ContextCapsule
     {
         [JsonPropertyName("anchor")]
         public CapsuleAnchor Anchor { get; init; }
