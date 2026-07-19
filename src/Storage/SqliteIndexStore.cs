@@ -54,7 +54,7 @@
 
         public void SaveDeclarations(string snapshotId, IEnumerable<SymbolDeclaration> declarations)
             => _declarationStore.SaveDeclarations(snapshotId, declarations);
-        public SymbolInfo? GetSymbolInfo(string symbolId, string snapshotId)
+        public IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId)
             => _declarationStore.GetSymbolInfo(symbolId, snapshotId);
         public string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false)
             => _declarationStore.GetSymbolSource(symbolId, snapshotId, viewKind, includeGenerated);
@@ -107,7 +107,7 @@
             => _searchStore.SearchSource(query, snapshotId, limit, includeGenerated);
         public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
             => _searchStore.SearchSymbols(query, snapshotId, limit, includeGenerated, kind);
-        public SymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
+        public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
             => _searchStore.ResolveSymbolByFqn(fqn, snapshotId, includeGenerated);
 
         // ── ISemanticDiffStore ─────────────────────────────────────────────

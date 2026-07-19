@@ -77,8 +77,7 @@ namespace Lurp.Storage
         }
 
         private static List<IMigration> GetMigrations() =>
-            new List<IMigration>
-            {
+            [
                 new Migration_001_InitialSchema(),
                 new Migration_002_AddLineStarts(),
                 new Migration_003_SymbolTables(),
@@ -90,7 +89,7 @@ namespace Lurp.Storage
                 new Migration_009_PerSnapshotSymbolData(),
                 new Migration_010_AddLastChangedSnapshotId(),
                 new Migration_011_SnapshotStatus(),
-            };
+            ];
 
         internal static void RunTest(string testDbPath)
         {

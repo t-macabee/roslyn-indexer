@@ -9,7 +9,7 @@ namespace Lurp.Storage
         public string SdkVersion { get; init; } = string.Empty;
         public string CompilerVersion { get; init; } = string.Empty;
         public DateTime CreatedAtUtc { get; init; }
-        public List<DocumentVersion> Documents { get; init; } = new();
+        public List<DocumentVersion> Documents { get; init; } = [];
     }
 
     public sealed class EdgeRecord

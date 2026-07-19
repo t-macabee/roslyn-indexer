@@ -148,7 +148,7 @@ public sealed class SearchStore : ISearchStore
         return results;
     }
 
-    public SymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
+    public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
     {
         using var connection = CreateConnection();
         using var command = connection.CreateCommand();

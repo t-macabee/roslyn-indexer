@@ -37,7 +37,7 @@ namespace Lurp.Workspace
                     {
                         ImpactDirection.Downstream => _store.GetOutgoingEdges(_snapshotId, currentId),
                         ImpactDirection.Upstream => _store.GetIncomingEdges(_snapshotId, currentId),
-                        _ => new List<EdgeRecord>()
+                        _ => []
                     };
                 }
                 catch (Exception ex)

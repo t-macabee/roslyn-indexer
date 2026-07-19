@@ -20,11 +20,11 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         HashSet<(string source, string target, string kind)> Seen
     );
 
-    private static readonly HashSet<string> _conventionMethodNames = new()
-    {
+    private static readonly HashSet<string> _conventionMethodNames =
+    [
         "Scan", "AddClasses", "AsImplementedInterfaces",
         "AsMatchingInterface", "UsingRegistrationStrategy", "AddAssemblyTypes",
-    };
+    ];
 
     public List<EdgeRecord> Extract(Compilation compilation, string snapshotId)
     {

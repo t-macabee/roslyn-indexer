@@ -1,5 +1,4 @@
 ﻿using System.Collections.Immutable;
-using Lurp.Snapshots;
 using Lurp.Storage;
 namespace Lurp.Workspace;
 
@@ -14,8 +13,8 @@ public static class WorkspaceFreshness
 
         if (storageManifest == null)
         {
-            return new FreshnessResult(IsFresh: false,Mismatches: new List<SnapshotMismatch>{new(MismatchKind.VersionChanged,"Workspace has never been indexed — no snapshot manifest found.",Document: null,Detail: null)
-                },
+            return new FreshnessResult(IsFresh: false,Mismatches: [new(MismatchKind.VersionChanged,"Workspace has never been indexed — no snapshot manifest found.",Document: null,Detail: null)
+                ],
                 CurrentWorkspaceId: current.Id,
                 StoredSnapshotId: null,
                 StoredWorkspaceId: null);
@@ -31,8 +30,8 @@ public static class WorkspaceFreshness
 
         if (stored == null)
         {
-            return new FreshnessResult(IsFresh: false,Mismatches: new List<SnapshotMismatch>{new(MismatchKind.VersionChanged,"Workspace has never been indexed — no snapshot manifest found.",Document: null,Detail: null)
-                },
+            return new FreshnessResult(IsFresh: false,Mismatches: [new(MismatchKind.VersionChanged,"Workspace has never been indexed — no snapshot manifest found.",Document: null,Detail: null)
+                ],
                 CurrentWorkspaceId: current.Id,
                 StoredSnapshotId: null,
                 StoredWorkspaceId: null);

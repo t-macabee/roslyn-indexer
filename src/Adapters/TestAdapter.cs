@@ -11,6 +11,14 @@ public sealed class TestAdapter : IFrameworkAdapter
     public string Name => "Test";
     public string Version => "test-v1";
 
+    private sealed record ExtractionContext(
+        string AssemblyIdentity,
+        HashSet<(string source, string target, string kind)> Seen,
+        List<EdgeRecord> Edges,
+        string TestMethodId,
+        string SnapshotId,
+        HashSet<string> ReferencedSymbols);
+
     public List<EdgeRecord> Extract(Compilation compilation, string snapshotId)
     {
         var edges = new List<EdgeRecord>();
@@ -48,8 +56,9 @@ public sealed class TestAdapter : IFrameworkAdapter
 
                     var semanticModel = GetOrCreateSemanticModel(methodSyntax.SyntaxTree, semanticModelCache, compilation);
                     var referencedSymbols = new HashSet<string>();
+                    var context = new ExtractionContext(assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols);
 
-                    CollectTestReferences(bodySyntax, semanticModel, assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols);
+                    CollectTestReferences(bodySyntax, semanticModel, context);
                 }
             }
         }
@@ -104,11 +113,7 @@ public sealed class TestAdapter : IFrameworkAdapter
         return false;
     }
 
-    private static void AddProductionRef(ISymbol symbol,string assemblyIdentity,HashSet<(string source, string target, string kind)> seen,
-        List<EdgeRecord> edges,
-        string testMethodId,
-        string snapshotId,
-        HashSet<string> referencedSymbols)
+    private static void AddProductionRef(ISymbol symbol, ExtractionContext context)
     {
 
         var productionSymbol = symbol is IMethodSymbol or IPropertySymbol or IFieldSymbol or IEventSymbol
@@ -119,26 +124,26 @@ public sealed class TestAdapter : IFrameworkAdapter
             return;
 
         var productionAssembly = productionSymbol.ContainingAssembly;
-        if (productionAssembly != null && productionAssembly.Identity.GetDisplayName() == assemblyIdentity)
+        if (productionAssembly != null && productionAssembly.Identity.GetDisplayName() == context.AssemblyIdentity)
             return;
 
-        var productionId = MakeSymbolId(productionSymbol, assemblyIdentity);
+        var productionId = MakeSymbolId(productionSymbol, context.AssemblyIdentity);
         if (productionId == null)
             return;
 
-        if (!referencedSymbols.Add(productionId))
+        if (!context.ReferencedSymbols.Add(productionId))
             return;
 
-        var key = (productionId, testMethodId, EdgeKind.TestedBy.ToString());
-        if (seen.Add(key))
+        var key = (productionId, context.TestMethodId, EdgeKind.TestedBy.ToString());
+        if (context.Seen.Add(key))
         {
-            edges.Add(new EdgeRecord
+            context.Edges.Add(new EdgeRecord
             {
                 SourceSymbolId = productionId,
-                TargetSymbolId = testMethodId,
+                TargetSymbolId = context.TestMethodId,
                 Kind = EdgeKind.TestedBy.ToString(),
                 Provenance = "framework_derived",
-                SnapshotId = snapshotId,
+                SnapshotId = context.SnapshotId,
                 ExtractorVersion = "test-v1",
             });
         }
@@ -169,29 +174,27 @@ public sealed class TestAdapter : IFrameworkAdapter
         return types;
     }
 
-    private static void CollectTestReferences(SyntaxNode bodySyntax, SemanticModel semanticModel, string assemblyIdentity,
-        HashSet<(string source, string target, string kind)> seen, List<EdgeRecord> edges,
-        string testMethodId, string snapshotId, HashSet<string> referencedSymbols)
+    private static void CollectTestReferences(SyntaxNode bodySyntax, SemanticModel semanticModel, ExtractionContext context)
     {
         foreach (var invocation in bodySyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
             var symbolInfo = semanticModel.GetSymbolInfo(invocation);
             if (symbolInfo.Symbol != null)
-                AddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols);
+                AddProductionRef(symbolInfo.Symbol, context);
         }
 
         foreach (var creation in bodySyntax.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
         {
             var symbolInfo = semanticModel.GetSymbolInfo(creation);
             if (symbolInfo.Symbol != null)
-                AddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols);
+                AddProductionRef(symbolInfo.Symbol, context);
         }
 
         foreach (var memberAccess in bodySyntax.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
         {
             var symbolInfo = semanticModel.GetSymbolInfo(memberAccess);
             if (symbolInfo.Symbol != null)
-                AddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols);
+                AddProductionRef(symbolInfo.Symbol, context);
         }
     }
 

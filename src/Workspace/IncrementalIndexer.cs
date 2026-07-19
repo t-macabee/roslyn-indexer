@@ -1,5 +1,4 @@
-﻿using Lurp.Snapshots;
-using Lurp.Storage;
+﻿using Lurp.Storage;
 using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
@@ -23,7 +22,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         Deleted
     }
 
-    internal sealed record IncrementalResult(string NewSnapshotId, string PreviousSnapshotId, int ChangedDocumentCount, int DeclarationsExtracted, int EdgesExtracted, int DiagnosticsExtracted)
+    public sealed record IncrementalResult(string NewSnapshotId, string PreviousSnapshotId, int ChangedDocumentCount, int DeclarationsExtracted, int EdgesExtracted, int DiagnosticsExtracted)
     {
         public bool HasChanges => ChangedDocumentCount > 0 || DeclarationsExtracted > 0 || EdgesExtracted > 0;
     }
@@ -37,7 +36,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
     //   6. Re-extract declarations, edges, and diagnostics from affected compilations.
     //   7. Refresh cross-document edges for documents that reference changed symbols.
     //   8. Rebuild the FTS5 search index and compute a semantic diff against the previous snapshot.
-    internal async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, Storage.SnapshotRow previousManifest)
+    public async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, Storage.SnapshotRow previousManifest)
     {
         var previousSnapshotId = previousManifest.SnapshotId;
         var previousRichManifest = SnapshotManifest.FromStorageManifest(previousManifest);
@@ -302,11 +301,11 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
     {
         var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
         if (oldDocVersionIds.Count == 0)
-            return new HashSet<string>();
+            return [];
 
         var changedSymbolIds = _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, oldDocVersionIds);
         if (changedSymbolIds.Count == 0)
-            return new HashSet<string>();
+            return [];
 
         var affectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var symbolId in changedSymbolIds)

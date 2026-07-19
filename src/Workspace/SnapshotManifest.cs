@@ -1,9 +1,8 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using Lurp.Storage;
-using Lurp.Workspace;
 
-namespace Lurp.Snapshots;
+namespace Lurp.Workspace;
 
 public sealed class SnapshotManifest
 {
@@ -22,7 +21,7 @@ public sealed class SnapshotManifest
     [JsonPropertyName("documentVersions")]
     [JsonConverter(typeof(DocumentVersionMapConverter))]
     public Dictionary<DocumentId, DocumentVersionId> DocumentVersions { get; init; }
-        = new Dictionary<DocumentId, DocumentVersionId>();
+        = [];
 
     [JsonPropertyName("sdkVersion")]
     public string SdkVersion { get; init; } = "";
@@ -32,11 +31,11 @@ public sealed class SnapshotManifest
 
     [JsonPropertyName("targetFrameworks")]
     public Dictionary<string, string> TargetFrameworks { get; init; }
-        = new Dictionary<string, string>();
+        = [];
 
     [JsonPropertyName("projectGraph")]
     public Dictionary<string, string[]> ProjectGraph { get; init; }
-        = new Dictionary<string, string[]>();
+        = [];
 
     [JsonPropertyName("databaseSchemaVersion")]
     public int DatabaseSchemaVersion { get; init; }
@@ -164,8 +163,8 @@ public sealed class SnapshotManifest
             DocumentVersions = documentVersions,
             SdkVersion = storage.SdkVersion,
             CompilerVersion = storage.CompilerVersion,
-            TargetFrameworks = new Dictionary<string, string>(),
-            ProjectGraph = new Dictionary<string, string[]>(),
+            TargetFrameworks = [],
+            ProjectGraph = [],
             DatabaseSchemaVersion = 0,
             OutputSchemaVersion = 0,
             ExtractorVersion = "",

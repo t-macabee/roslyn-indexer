@@ -1,10 +1,10 @@
-﻿using System.Runtime.CompilerServices;
+﻿using Lurp.Storage;
 using Microsoft.CodeAnalysis;
-using Lurp.Storage;
+using System.Runtime.CompilerServices;
 
 internal static class CompilationHelper
 {
-    public static async IAsyncEnumerable<(Project Project, Compilation Compilation)> GetAllAsync(Solution solution,[EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public static async IAsyncEnumerable<(Project Project, Compilation Compilation)> GetAllAsync(Solution solution, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var project in solution.Projects)
         {
@@ -16,7 +16,7 @@ internal static class CompilationHelper
         }
     }
 
-    public static List<DiagnosticRecord> GetDiagnostics(string projectName,Compilation compilation)
+    public static List<DiagnosticRecord> GetDiagnostics(string projectName, Compilation compilation)
     {
         var results = new List<DiagnosticRecord>();
 

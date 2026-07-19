@@ -58,7 +58,7 @@ namespace Lurp.Workspace
                         int itemCost = EstimateTokens(item.Source);
                         if (runningTotal + itemCost > Budget)
                             break;
-                        AddTierToCapsule(capsule, name, new List<CapsuleItem> { item });
+                        AddTierToCapsule(capsule, name, [item]);
                         runningTotal += itemCost;
                     }
                     truncated = true;
@@ -93,8 +93,8 @@ namespace Lurp.Workspace
             switch (Intent)
             {
                 case ContextIntent.Inspect:
-                    return new (Func<List<CapsuleItem>> Build, string Name)[]
-                    {
+                    return
+                    [
                         ((Func<List<CapsuleItem>>)BuildContracts, "contracts"),
                         ((Func<List<CapsuleItem>>)BuildDirectCallees, "directCallees"),
                         ((Func<List<CapsuleItem>>)BuildDirectCallers, "directCallers"),
@@ -102,11 +102,11 @@ namespace Lurp.Workspace
                         ((Func<List<CapsuleItem>>)BuildSecondDegreeContext, "secondDegreeContext"),
                         ((Func<List<CapsuleItem>>)BuildRelevantTests, "relevantTests"),
                         ((Func<List<CapsuleItem>>)BuildSurroundingSiblings, "surroundingSource"),
-                    };
+                    ];
 
                 case ContextIntent.Modify:
-                    return new (Func<List<CapsuleItem>> Build, string Name)[]
-                    {
+                    return
+                    [
                         ((Func<List<CapsuleItem>>)BuildContracts, "contracts"),
                         ((Func<List<CapsuleItem>>)BuildDirectCallers, "directCallers"),
                         ((Func<List<CapsuleItem>>)BuildRegisteredImplementations, "registeredImplementations"),
@@ -114,11 +114,11 @@ namespace Lurp.Workspace
                         ((Func<List<CapsuleItem>>)BuildDirectCallees, "directCallees"),
                         ((Func<List<CapsuleItem>>)BuildSecondDegreeContext, "secondDegreeContext"),
                         ((Func<List<CapsuleItem>>)BuildSurroundingSiblings, "surroundingSource"),
-                    };
+                    ];
 
                 case ContextIntent.Diagnose:
-                    return new (Func<List<CapsuleItem>> Build, string Name)[]
-                    {
+                    return
+                    [
                         ((Func<List<CapsuleItem>>)BuildDirectCallers, "directCallers"),
                         ((Func<List<CapsuleItem>>)BuildRegisteredImplementations, "registeredImplementations"),
                         ((Func<List<CapsuleItem>>)BuildContracts, "contracts"),
@@ -126,7 +126,7 @@ namespace Lurp.Workspace
                         ((Func<List<CapsuleItem>>)BuildRelevantTests, "relevantTests"),
                         ((Func<List<CapsuleItem>>)BuildSecondDegreeContext, "secondDegreeContext"),
                         ((Func<List<CapsuleItem>>)BuildSurroundingSiblings, "surroundingSource"),
-                    };
+                    ];
 
                 default:
                     return defaultTiers;
@@ -491,7 +491,7 @@ namespace Lurp.Workspace
                 };
 
                 gapCapsule.Uncertainties.Add(new UncertaintyEntry(
-                    new List<string> { gapAnchor.SymbolId },
+                    [gapAnchor.SymbolId],
                     "location_gap",
                     $"No symbol found at {lookup.FileArg}:{lookup.LineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
 

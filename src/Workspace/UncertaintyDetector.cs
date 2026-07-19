@@ -67,11 +67,11 @@ namespace Lurp.Workspace
                 {
                     if (edge.Kind == EdgeKind.ReflectionNameCandidate.ToString())
                     {
-                        capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId }, edge.Kind, $"Reflection name candidate: the string-based reference to '{edge.TargetSymbolId}' was matched by name. Verify that this reference correctly resolves at runtime."));
+                        capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, $"Reflection name candidate: the string-based reference to '{edge.TargetSymbolId}' was matched by name. Verify that this reference correctly resolves at runtime."));
                     }
                     else if (edge.Kind == EdgeKind.ReflectionTargetUnknown.ToString())
                     {
-                        capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId }, edge.Kind, "Unknown reflection target: the runtime target of this reflection call cannot be statically determined."));
+                        capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, "Unknown reflection target: the runtime target of this reflection call cannot be statically determined."));
                     }
                 }
             }
@@ -86,7 +86,7 @@ namespace Lurp.Workspace
                     if (edge.Provenance == "compiler_proved" || edge.Provenance == "framework_derived")
                         continue;
 
-                    capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId }, edge.Kind, $"Dispatch candidate '{edge.TargetSymbolId}' was resolved with evidence level '{edge.Provenance}'. Manually verify that the runtime dispatch reaches the correct implementation."));
+                    capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, $"Dispatch candidate '{edge.TargetSymbolId}' was resolved with evidence level '{edge.Provenance}'. Manually verify that the runtime dispatch reaches the correct implementation."));
                 }
             }
 
@@ -109,7 +109,7 @@ namespace Lurp.Workspace
                     if (edge.Provenance != "convention")
                         continue;
 
-                    capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId }, edge.Kind, $"Convention-based framework binding: the '{edge.Kind}' edge was inferred by naming convention, not explicit registration. Verify that the expected target is reached at runtime."));
+                    capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, $"Convention-based framework binding: the '{edge.Kind}' edge was inferred by naming convention, not explicit registration. Verify that the expected target is reached at runtime."));
                 }
             }
 
@@ -122,7 +122,7 @@ namespace Lurp.Workspace
 
                     if (hasGeneratedSource != null && hasNonGeneratedSource == null)
                     {
-                        capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { symbolId }, "generated_excluded", $"Generated symbol '{symbolId}' was excluded because includeGenerated is set to false. Review generated code if runtime behavior depends on it."));
+                        capsule.Uncertainties.Add(new UncertaintyEntry([symbolId], "generated_excluded", $"Generated symbol '{symbolId}' was excluded because includeGenerated is set to false. Review generated code if runtime behavior depends on it."));
                     }
                 }
             }

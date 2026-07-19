@@ -114,7 +114,7 @@ public sealed class DeclarationStore : IDeclarationStore
         }
     }
 
-    public SymbolInfo? GetSymbolInfo(string symbolId, string snapshotId)
+    public IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId)
     {
         using var connection = CreateConnection();
         using var command = connection.CreateCommand();
@@ -408,16 +408,16 @@ public sealed class DeclarationStore : IDeclarationStore
         return Encoding.UTF8.GetString(content, start, length);
     }
 
-    internal static SymbolInfo? ReadSymbolInfo(SqliteDataReader reader)
+    internal static IndexedSymbolInfo? ReadSymbolInfo(SqliteDataReader reader)
     {
         var sid = new SymbolId(docCommentId: reader.GetString(1),
             assemblyIdentity: reader.GetString(2),
             fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4));
 
         var kindStr = reader.GetString(3);
-        Enum.TryParse<SymbolKind>(kindStr, ignoreCase: true, out var kind);
+        Enum.TryParse<IndexedSymbolKind>(kindStr, ignoreCase: true, out var kind);
 
-        return new SymbolInfo(symbolId: sid,kind: kind,fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4),
+        return new IndexedSymbolInfo(symbolId: sid,kind: kind,fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4),
             metadataJson: reader.IsDBNull(5) ? null : reader.GetString(5),
             declarationCount: reader.GetInt32(6),
             isPartial: reader.GetInt32(7) == 1);

@@ -116,12 +116,12 @@ namespace Lurp.Workspace
             var changes = new List<SemanticChange>();
 
             var fromMeta = string.IsNullOrEmpty(fromJson)
-                ? new Dictionary<string, JsonElement>()
-                : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(fromJson) ?? new();
+                ? []
+                : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(fromJson) ?? [];
 
             var toMeta = string.IsNullOrEmpty(toJson)
-                ? new Dictionary<string, JsonElement>()
-                : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(toJson) ?? new();
+                ? []
+                : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(toJson) ?? [];
 
             var fromAcc = GetMetaString(fromMeta, "accessibility");
             var toAcc = GetMetaString(toMeta, "accessibility");

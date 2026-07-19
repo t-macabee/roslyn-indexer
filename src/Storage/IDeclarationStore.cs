@@ -3,7 +3,7 @@ namespace Lurp.Storage
     public interface IDeclarationStore
     {
         void SaveDeclarations(string snapshotId, IEnumerable<SymbolDeclaration> declarations);
-        SymbolInfo? GetSymbolInfo(string symbolId, string snapshotId);
+        IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId);
         string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false);
         string? GetContainingTypeSource(string symbolId, string snapshotId);
         string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines);

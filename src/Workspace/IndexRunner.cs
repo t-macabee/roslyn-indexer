@@ -3,7 +3,6 @@ using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using System.Diagnostics;
-using Lurp.Snapshots;
 
 namespace Lurp.Workspace;
 

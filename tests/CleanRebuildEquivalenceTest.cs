@@ -140,10 +140,10 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
             var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
 
             var snapshotId = SnapshotId.New();
-            var manifest = global::Lurp.Snapshots.SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
+            var manifest = global::Lurp.Workspace.SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
             var snapshotIdStr = snapshotId.ToString();
 
-            manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath: null);
+            manifest.Save(store, store, workspaceInfo.DocumentContents, jsonExportPath: null);
 
             int totalDeclarations = 0;
             int totalEdges = 0;
@@ -173,7 +173,7 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
             var previousManifest = store.LoadLatestSnapshot(manifest.WorkspaceId.Value);
             if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
             {
-                var differ = new Workspace.SemanticDiffer(store);
+                var differ = new Workspace.SemanticDiffer(store, store, store);
                 var diffChanges = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
                 store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
             }
@@ -215,7 +215,7 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
 
             var incrementalIndexer = new IncrementalIndexer(
                 store, gitRoot, _solutionPath, _testDir,
-                skipAdapters: new HashSet<string>(),
+                skipAdapters: [],
                 jsonExportPath: null);
 
             var result = await incrementalIndexer.RunIncrementalAsync(

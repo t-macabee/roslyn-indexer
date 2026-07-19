@@ -27,7 +27,7 @@ namespace Lurp.Storage
         ReflectionTargetUnknown,
     }
 
-    public enum SymbolKind
+    public enum IndexedSymbolKind
     {
         Namespace,
         Type,
@@ -127,7 +127,7 @@ namespace Lurp.Storage
     public sealed class SymbolDeclaration
     {
         public SymbolId SymbolId { get; init; } = null!;
-        public SymbolKind Kind { get; init; }
+        public IndexedSymbolKind Kind { get; init; }
         public string DocumentVersionId { get; init; } = string.Empty;
         public DeclarationSpan FullSpan { get; init; } = null!;
         public DeclarationSpan SignatureSpan { get; init; } = null!;

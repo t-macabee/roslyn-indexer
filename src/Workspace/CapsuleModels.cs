@@ -107,25 +107,25 @@ namespace Lurp.Workspace
         public CapsuleAnchor Anchor { get; init; }
 
         [JsonPropertyName("contracts")]
-        public List<CapsuleItem> Contracts { get; init; } = new();
+        public List<CapsuleItem> Contracts { get; init; } = [];
 
         [JsonPropertyName("directCallees")]
-        public List<CapsuleItem> DirectCallees { get; init; } = new();
+        public List<CapsuleItem> DirectCallees { get; init; } = [];
 
         [JsonPropertyName("directCallers")]
-        public List<CapsuleItem> DirectCallers { get; init; } = new();
+        public List<CapsuleItem> DirectCallers { get; init; } = [];
 
         [JsonPropertyName("registeredImplementations")]
-        public List<CapsuleItem> RegisteredImplementations { get; init; } = new();
+        public List<CapsuleItem> RegisteredImplementations { get; init; } = [];
 
         [JsonPropertyName("relevantTests")]
-        public List<CapsuleItem> RelevantTests { get; init; } = new();
+        public List<CapsuleItem> RelevantTests { get; init; } = [];
 
         [JsonPropertyName("secondDegreeContext")]
-        public List<CapsuleItem> SecondDegreeContext { get; init; } = new();
+        public List<CapsuleItem> SecondDegreeContext { get; init; } = [];
 
         [JsonPropertyName("surroundingSource")]
-        public List<CapsuleItem> SurroundingSource { get; init; } = new();
+        public List<CapsuleItem> SurroundingSource { get; init; } = [];
 
         [JsonPropertyName("budget")]
         public int Budget { get; init; }
@@ -137,13 +137,13 @@ namespace Lurp.Workspace
         public bool Truncated { get; set; }
 
         [JsonPropertyName("truncatedCategories")]
-        public List<string> TruncatedCategories { get; set; } = new();
+        public List<string> TruncatedCategories { get; set; } = [];
 
         [JsonPropertyName("uncertainties")]
-        public List<UncertaintyEntry> Uncertainties { get; init; } = new();
+        public List<UncertaintyEntry> Uncertainties { get; init; } = [];
 
         [JsonPropertyName("suggestedVerification")]
-        public List<VerificationSuggestion> SuggestedVerification { get; init; } = new();
+        public List<VerificationSuggestion> SuggestedVerification { get; init; } = [];
 
         public ContextCapsule(CapsuleAnchor anchor)
         {

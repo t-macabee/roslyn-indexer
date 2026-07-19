@@ -5,6 +5,6 @@ namespace Lurp.Storage
         void BuildSearchIndex(string snapshotId);
         List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false);
         List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null);
-        SymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false);
+        IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false);
     }
 }

@@ -38,16 +38,16 @@
         Surrounding,
     }
 
-    public sealed class SymbolInfo
+    public sealed class IndexedSymbolInfo
     {
         public SymbolId SymbolId { get; }
-        public SymbolKind Kind { get; }
+        public IndexedSymbolKind Kind { get; }
         public string? FullyQualifiedName { get; }
         public string? MetadataJson { get; }
         public int DeclarationCount { get; }
         public bool IsPartial { get; }
 
-        public SymbolInfo(SymbolId symbolId,SymbolKind kind,string? fullyQualifiedName,string? metadataJson,int declarationCount,bool isPartial)
+        public IndexedSymbolInfo(SymbolId symbolId,IndexedSymbolKind kind,string? fullyQualifiedName,string? metadataJson,int declarationCount,bool isPartial)
         {
             SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
             Kind = kind;

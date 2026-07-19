@@ -64,9 +64,9 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
         var checksRun = options.Checks.ToList();
 
         var allSymbolIds = _store.GetSymbolIdsInSnapshot(_snapshotId);
-        var symbolInfoCache = new Dictionary<string, SymbolInfo?>();
+        var symbolInfoCache = new Dictionary<string, IndexedSymbolInfo?>();
 
-        SymbolInfo? GetInfo(string symbolId)
+        IndexedSymbolInfo? GetInfo(string symbolId)
         {
             if (!symbolInfoCache.TryGetValue(symbolId, out var info))
             {
