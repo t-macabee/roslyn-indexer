@@ -1,24 +1,26 @@
-using System.Diagnostics;
 using Lurp.Storage;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
+using System.Diagnostics;
 
 namespace Lurp.Workspace;
 
 public static class IndexRunner
 {
-    public static async Task RunAsync(IIndexStore store,string solutionPath,string outputDir,HashSet<string> skipAdapters,string? jsonExportPath,string? strategyArg)
+    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg)
     {
         if (!MSBuildLocator.IsRegistered)
         {
             var instances = MSBuildLocator.RegisterDefaults();
+
             Console.WriteLine($"MSBuild: {instances?.MSBuildPath ?? "default"}");
         }
 
         string strategy = ResolveStrategy(store, strategyArg);
 
         Console.WriteLine($"Strategy: {strategy}");
+
         if (strategy == "full")
         {
             Console.WriteLine("  (Use --strategy=full to force a full rebuild when something looks wrong.)");
@@ -27,19 +29,25 @@ public static class IndexRunner
         var totalSw = Stopwatch.StartNew();
 
         Console.Write("Loading solution... ");
+
         using var workspace = MSBuildWorkspace.Create();
+
         var solution = await workspace.OpenSolutionAsync(solutionPath);
+
         Console.WriteLine($"done ({solution.Projects.Count()} projects).");
 
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
+
         Console.Write("Building workspace info... ");
+
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
+
         Console.WriteLine("done.");
 
         if (strategy == "incremental")
         {
-            var storageWsId = new Storage.WorkspaceId(workspaceInfo.Id.Value);
-            var previousStorageManifest = store.LoadLatestSnapshot(storageWsId);
+            var previousStorageManifest = store.LoadLatestSnapshot(workspaceInfo.Id.Value);
+
             if (previousStorageManifest == null)
             {
                 Console.WriteLine("No previous snapshot found. Falling back to full index.");
@@ -49,6 +57,7 @@ public static class IndexRunner
             {
                 var incrementalIndexer = new IncrementalIndexer(store, gitRoot, solutionPath, outputDir, skipAdapters, jsonExportPath);
                 var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest);
+
                 Console.WriteLine();
                 Console.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
                 Console.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
@@ -57,12 +66,14 @@ public static class IndexRunner
                 Console.WriteLine($"  Edges:             {result.EdgesExtracted}");
                 Console.WriteLine($"  Diagnostics:       {result.DiagnosticsExtracted}");
                 Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
-
                 Console.Write("Pruning old snapshots... ");
+
                 store.PruneOldSnapshots(keep: 3);
+
                 Console.WriteLine("done.");
 
                 totalSw.Stop();
+
                 Console.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
                 return;
             }
@@ -74,21 +85,26 @@ public static class IndexRunner
         }
 
         Console.Write("Pruning old snapshots... ");
+
         store.PruneOldSnapshots(keep: 3);
+
         Console.WriteLine("done.");
 
         totalSw.Stop();
+
         Console.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
     }
 
-    private static async Task RunFullIndexAsync(IIndexStore store,Solution solution,WorkspaceInfo workspaceInfo,HashSet<string> skipAdapters,string? jsonExportPath)
+    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath)
     {
         var snapshotId = SnapshotId.New();
         var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
         var snapshotIdStr = snapshotId.ToString();
 
         Console.Write("Saving snapshot to database... ");
+
         manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath);
+
         Console.WriteLine("done.");
 
         store.MarkSnapshotInProgress(snapshotIdStr);
@@ -102,10 +118,10 @@ public static class IndexRunner
             await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution))
             {
                 var projectName = project.Name;
+
                 Console.Write($"  [{projectName}] ");
 
-                var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, skipAdapters,logWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"),
-                    logError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
+                var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, skipAdapters, logWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"), logError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
 
                 store.SaveDeclarations(snapshotIdStr, result.Declarations);
                 totalDeclarations += result.Declarations.Count;
@@ -126,15 +142,18 @@ public static class IndexRunner
             Console.WriteLine($"  Diagnostics:  {totalDiagnostics}");
             Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
 
-            var storageWsId = new Storage.WorkspaceId(manifest.WorkspaceId.Value);
-            var previousManifest = store.LoadLatestSnapshot(storageWsId);
+            var previousManifest = store.LoadLatestSnapshot(manifest.WorkspaceId.Value);
+
             if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
             {
                 Console.WriteLine();
                 Console.Write("Computing semantic diff from previous snapshot... ");
+
                 var differ = new SemanticDiffer(store);
                 var diffChanges = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
+
                 store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
+
                 Console.WriteLine($"done ({diffChanges.Count} changes).");
             }
 
@@ -152,6 +171,7 @@ public static class IndexRunner
         if (strategyArg != null)
         {
             var strategy = strategyArg.ToLowerInvariant();
+
             if (strategy != "incremental" && strategy != "full")
             {
                 Console.Error.WriteLine("ERROR: --strategy must be 'incremental' or 'full'.");
@@ -161,6 +181,7 @@ public static class IndexRunner
         }
 
         var latestSnapshotId = store.GetLatestSnapshotId();
+
         if (latestSnapshotId == null)
         {
             Console.WriteLine("No existing snapshot found. Defaulting to --strategy=full for initial index.");

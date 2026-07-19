@@ -53,7 +53,7 @@ namespace Lurp.Storage
                 throw new InvalidOperationException($"Schema version mismatch: expected {expectedVersion}, got {actual}.");
         }
 
-        public void SaveWorkspace(WorkspaceId id, string gitRoot, string solutionPath, DateTime createdAtUtc)
+        public void SaveWorkspace(string id, string gitRoot, string solutionPath, DateTime createdAtUtc)
         {
             EnsureOpen();
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
@@ -64,7 +64,7 @@ namespace Lurp.Storage
                 INSERT OR REPLACE INTO workspaces (workspace_id, git_root, solution_path)
                 VALUES (@workspaceId, @gitRoot, @solutionPath);
             ";
-            command.Parameters.AddWithValue("@workspaceId", id.Value);
+            command.Parameters.AddWithValue("@workspaceId", id);
             command.Parameters.AddWithValue("@gitRoot", gitRoot);
             command.Parameters.AddWithValue("@solutionPath", solutionPath);
             command.ExecuteNonQuery();
@@ -190,7 +190,7 @@ namespace Lurp.Storage
             command.ExecuteNonQuery();
         }
 
-        public SnapshotManifest? LoadLatestSnapshot(WorkspaceId workspaceId)
+        public SnapshotManifest? LoadLatestSnapshot(string workspaceId)
         {
             EnsureOpen();
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
@@ -207,7 +207,7 @@ namespace Lurp.Storage
                 ORDER BY s.built_at_utc DESC
                 LIMIT 1;
             ";
-            command.Parameters.AddWithValue("@workspaceId", workspaceId.Value);
+            command.Parameters.AddWithValue("@workspaceId", workspaceId);
 
             using var reader = command.ExecuteReader();
             if (!reader.Read())

@@ -2,26 +2,6 @@ using System.Text.Json.Serialization;
 
 namespace Lurp.Storage
 {
-    public class WorkspaceId
-    {
-        public string Value { get; }
-
-        public WorkspaceId(string value)
-        {
-            Value = value ?? throw new ArgumentNullException(nameof(value));
-        }
-
-        public override bool Equals(object? obj)
-        {
-            return obj is WorkspaceId other && Value == other.Value;
-        }
-
-        public override int GetHashCode()
-        {
-            return Value.GetHashCode();
-        }
-    }
-
     public class SnapshotManifest
     {
         public string SnapshotId { get; }

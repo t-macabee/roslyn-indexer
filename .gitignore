@@ -441,3 +441,4 @@ FodyWeavers.xsd
 .output/
 .deepcode/
 .deepcodeignore
+NDependOut/

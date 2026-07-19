@@ -9,11 +9,11 @@ namespace Lurp.Storage
         int GetCurrentSchemaVersion();
         void ValidateSchema(int expectedVersion);
 
-        void SaveWorkspace(WorkspaceId id, string gitRoot, string solutionPath, DateTime createdAtUtc);
+        void SaveWorkspace(string id, string gitRoot, string solutionPath, DateTime createdAtUtc);
         void SaveSnapshot(SnapshotManifest manifest);
         void MarkSnapshotInProgress(string snapshotId);
         void MarkSnapshotComplete(string snapshotId);
-        SnapshotManifest? LoadLatestSnapshot(WorkspaceId workspaceId);
+        SnapshotManifest? LoadLatestSnapshot(string workspaceId);
         string? GetLatestSnapshotId(string? workspaceId = null);
         string? GetSource(string relativePath, string snapshotId);
         List<string> GetSnapshotIds(string workspaceId);

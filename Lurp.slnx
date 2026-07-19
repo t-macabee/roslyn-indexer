@@ -1,5 +1,7 @@
 <Solution>
-  <Folder Name="/src/" />
+  <Folder Name="/src/">
+    <Project Path="src/Lurp.csproj" />
+  </Folder>
   <Folder Name="/src/Storage/">
     <Project Path="src/Storage/Lurp.Storage.csproj" />
   </Folder>

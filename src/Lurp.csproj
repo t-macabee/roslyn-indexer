@@ -10,7 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Storage\obj\**\*.cs" />
+    <Compile Remove="Storage\**\*.cs" />
+    <ProjectReference Include="Storage\Lurp.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>
