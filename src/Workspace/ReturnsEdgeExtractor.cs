@@ -4,14 +4,14 @@ using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Workspace;
 
-public sealed partial class MemberEdgeExtractor
+internal sealed class ReturnsEdgeExtractor(MemberEdgeExtractionContext context) : IMemberEdgeExtractor
 {
-    private List<EdgeRecord> ExtractReturns()
+    List<EdgeRecord> IMemberEdgeExtractor.Extract()
     {
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
 
-        foreach (var typeSymbol in GetNamespaceTypeMembers(_compilation.Assembly.GlobalNamespace))
+        foreach (var typeSymbol in context.GetAllNamedTypes())
         {
             foreach (var member in typeSymbol.GetMembers())
             {
@@ -21,8 +21,8 @@ public sealed partial class MemberEdgeExtractor
                 if (method.ReturnsVoid || method.ReturnType == null)
                     continue;
 
-                var methodId = MakeSymbolId(method);
-                var returnTypeId = MakeSymbolId(method.ReturnType);
+                var methodId = context.MakeSymbolId(method);
+                var returnTypeId = context.MakeSymbolId(method.ReturnType);
                 if (methodId == null || returnTypeId == null)
                     continue;
 
@@ -30,8 +30,8 @@ public sealed partial class MemberEdgeExtractor
                 if (!seen.Add(key))
                     continue;
 
-                var loc = GetMemberSourceLocation(method);
-                edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(),
+                var loc = context.GetMemberSourceLocation(method);
+                edges.Add(context.MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(),
                     ExtractorConstants.ReturnsExtractor, loc));
             }
         }

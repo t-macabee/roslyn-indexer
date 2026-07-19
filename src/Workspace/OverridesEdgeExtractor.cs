@@ -4,23 +4,23 @@ using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Workspace;
 
-public sealed partial class MemberEdgeExtractor
+internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context) : IMemberEdgeExtractor
 {
-    private List<EdgeRecord> ExtractOverrides()
+    List<EdgeRecord> IMemberEdgeExtractor.Extract()
     {
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
 
-        foreach (var typeSymbol in GetNamespaceTypeMembers(_compilation.Assembly.GlobalNamespace))
+        foreach (var typeSymbol in context.GetAllNamedTypes())
         {
             foreach (var member in typeSymbol.GetMembers())
             {
                 (string? sourceId, string? targetId) = member switch
                 {
                     IMethodSymbol method when method.IsOverride && method.OverriddenMethod != null
-                        => (MakeSymbolId(method), MakeSymbolId(method.OverriddenMethod)),
+                        => (context.MakeSymbolId(method), context.MakeSymbolId(method.OverriddenMethod)),
                     IPropertySymbol prop when prop.IsOverride && prop.OverriddenProperty != null
-                        => (MakeSymbolId(prop), MakeSymbolId(prop.OverriddenProperty)),
+                        => (context.MakeSymbolId(prop), context.MakeSymbolId(prop.OverriddenProperty)),
                     _ => ((string?)null, (string?)null)
                 };
 
@@ -31,8 +31,8 @@ public sealed partial class MemberEdgeExtractor
                 if (!seen.Add(key))
                     continue;
 
-                var loc = GetMemberSourceLocation(member);
-                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Overrides.ToString(),
+                var loc = context.GetMemberSourceLocation(member);
+                edges.Add(context.MakeEdge(sourceId, targetId, EdgeKind.Overrides.ToString(),
                     ExtractorConstants.OverridesExtractor, loc));
             }
         }
