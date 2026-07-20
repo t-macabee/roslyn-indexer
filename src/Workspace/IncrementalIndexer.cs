@@ -40,27 +40,45 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
     {
         var previousSnapshotId = previousManifest.SnapshotId;
         var previousRichManifest = SnapshotManifest.FromStorageManifest(previousManifest);
+        var timings = new List<SnapshotTimingRow>();
 
+        // Step 1: Change Detection
+        var sw1 = System.Diagnostics.Stopwatch.StartNew();
         var (changedDocs, changedPaths) = DetectAndLogChanges(workspaceInfo, previousRichManifest);
+        sw1.Stop();
+        timings.Add(new SnapshotTimingRow("change_detection", sw1.ElapsedMilliseconds, DateTime.UtcNow));
+
         if (changedDocs.Count == 0)
             return new IncrementalResult(NewSnapshotId: previousSnapshotId, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: 0, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0);
 
+        // Step 2: Affected Project Resolution
+        var sw2 = System.Diagnostics.Stopwatch.StartNew();
         Console.Write("Identifying affected projects... ");
         var affectedProjects = IdentifyAffectedProjects(solution, changedPaths);
         Console.WriteLine($"{affectedProjects.Count} affected: {string.Join(", ", affectedProjects)}");
 
         var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
         var oldDocVersionIdSet = new HashSet<string>(oldDocVersionIds);
+        sw2.Stop();
+        timings.Add(new SnapshotTimingRow("affected_project_resolution", sw2.ElapsedMilliseconds, DateTime.UtcNow));
 
+        // Step 3: Compilation Load
+        var sw3 = System.Diagnostics.Stopwatch.StartNew();
         var affectedCompilations = await LoadAffectedCompilationsAsync(solution, affectedProjects);
+        sw3.Stop();
+        timings.Add(new SnapshotTimingRow("compilation_load", sw3.ElapsedMilliseconds, DateTime.UtcNow));
 
         var snapshotId = SnapshotId.New();
         var newSnapshotIdStr = snapshotId.ToString();
         var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId));
 
+        // Step 4: Manifest Creation
+        var sw4 = System.Diagnostics.Stopwatch.StartNew();
         Console.Write("Saving new snapshot manifest... ");
         newManifest.Save(_store, _store, workspaceInfo.DocumentContents, _jsonExportPath);
         Console.WriteLine("done.");
+        sw4.Stop();
+        timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds, DateTime.UtcNow));
 
         _store.MarkSnapshotInProgress(newSnapshotIdStr);
 
@@ -70,18 +88,31 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
 
         try
         {
+            // Step 5: Stale-Data Removal
+            var sw5 = System.Diagnostics.Stopwatch.StartNew();
             PrepareSnapshotData(solution, previousSnapshotId, newSnapshotIdStr, affectedProjects, affectedCompilations, oldDocVersionIdSet);
+            sw5.Stop();
+            timings.Add(new SnapshotTimingRow("stale_data_removal", sw5.ElapsedMilliseconds, DateTime.UtcNow));
 
+            // Step 6: Re-extraction
+            var sw6 = System.Diagnostics.Stopwatch.StartNew();
             (totalDeclarations, totalEdges, totalDiagnostics) =
                 ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations);
+            sw6.Stop();
+            timings.Add(new SnapshotTimingRow("re_extraction", sw6.ElapsedMilliseconds, DateTime.UtcNow));
 
-            totalEdges += await FinalizeSnapshotAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects);
+            // Step 7: Cross-doc Edge Refresh + Step 8: FTS Rebuild + Diff (in FinalizeSnapshotAsync)
+            totalEdges += await FinalizeSnapshotAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects, timings);
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"ERROR: Incremental index failed, snapshot {newSnapshotIdStr} left in 'in_progress' state: {ex.Message}");
             throw;
         }
+
+        // Persist all timings
+        try { _store.SaveTimings(newSnapshotIdStr, timings); }
+        catch (Exception ex) { Console.Error.WriteLine($"WARNING: Failed to save timings: {ex.Message}"); }
 
         Console.WriteLine();
         Console.WriteLine($"Incremental index complete for snapshot {newSnapshotIdStr}");
@@ -192,18 +223,22 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         return (totalDecl, totalEdge, totalDiag);
     }
 
-    private async Task<int> FinalizeSnapshotAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotIdStr, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> affectedProjects)
+    private async Task<int> FinalizeSnapshotAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotIdStr, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> affectedProjects, List<SnapshotTimingRow> timings)
     {
+        // Step 7: Cross-doc Edge Refresh
+        var sw7 = System.Diagnostics.Stopwatch.StartNew();
         Console.Write("Updating cross-document edges... ");
         var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
         var crossDocEdgesProcessed = await refresher.RefreshAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects);
         Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
+        sw7.Stop();
+        timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw7.ElapsedMilliseconds, DateTime.UtcNow));
 
+        // Step 8: FTS Rebuild + Diff
+        var sw8 = System.Diagnostics.Stopwatch.StartNew();
         Console.Write("Rebuilding FTS5 search index... ");
-        var sw = System.Diagnostics.Stopwatch.StartNew();
         _store.BuildSearchIndex(newSnapshotIdStr);
-        sw.Stop();
-        Console.WriteLine($"done ({sw.ElapsedMilliseconds} ms).");
+        Console.WriteLine("done.");
 
         Console.Write("Computing semantic diff from previous snapshot... ");
         try
@@ -217,6 +252,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         {
             Console.Error.WriteLine($"WARNING: Semantic diff failed: {ex.Message}");
         }
+        sw8.Stop();
+        timings.Add(new SnapshotTimingRow("fts_rebuild_and_diff", sw8.ElapsedMilliseconds, DateTime.UtcNow));
 
         _store.MarkSnapshotComplete(newSnapshotIdStr);
         return crossDocEdgesProcessed;

@@ -7,6 +7,7 @@ public sealed class SnapshotStore : ISnapshotStore
     private readonly SnapshotDocumentStore _documents;
     private readonly SnapshotSymbolStore _symbols;
     private readonly SnapshotPruner _pruner;
+    private readonly SnapshotTimingStore _timings;
 
     public SnapshotStore(string dbPath)
     {
@@ -15,6 +16,7 @@ public sealed class SnapshotStore : ISnapshotStore
         _documents = new SnapshotDocumentStore(dbPath);
         _symbols = new SnapshotSymbolStore(dbPath);
         _pruner = new SnapshotPruner(dbPath);
+        _timings = new SnapshotTimingStore(dbPath);
     }
 
     public bool IsOpen { get; private set; }
@@ -78,4 +80,10 @@ public sealed class SnapshotStore : ISnapshotStore
     public List<string> GetSymbolIdsInSnapshot(string snapshotId) => _symbols.GetSymbolIdsInSnapshot(snapshotId);
 
     public void PruneOldSnapshots(int keep = 3) => _pruner.PruneOldSnapshots(keep);
+
+    public void SaveTimings(string snapshotId, IEnumerable<SnapshotTimingRow> timings)
+        => _timings.SaveTimings(snapshotId, timings);
+
+    public List<SnapshotTimingRow> GetTimings(string snapshotId)
+        => _timings.GetTimings(snapshotId);
 }

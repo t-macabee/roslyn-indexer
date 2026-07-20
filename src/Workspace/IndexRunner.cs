@@ -28,6 +28,7 @@ public static class IndexRunner
 
         var totalSw = Stopwatch.StartNew();
 
+        var swSolutionLoad = Stopwatch.StartNew();
         Console.Write("Loading solution... ");
 
         using var workspace = MSBuildWorkspace.Create();
@@ -35,14 +36,17 @@ public static class IndexRunner
         var solution = await workspace.OpenSolutionAsync(solutionPath);
 
         Console.WriteLine($"done ({solution.Projects.Count()} projects).");
+        swSolutionLoad.Stop();
 
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
 
+        var swWorkspaceInfo = Stopwatch.StartNew();
         Console.Write("Building workspace info... ");
 
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
 
         Console.WriteLine("done.");
+        swWorkspaceInfo.Stop();
 
         if (strategy == "incremental")
         {
@@ -81,7 +85,12 @@ public static class IndexRunner
 
         if (strategy == "full")
         {
-            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath);
+            var setupTimings = new List<SnapshotTimingRow>
+            {
+                new SnapshotTimingRow("solution_load", swSolutionLoad.ElapsedMilliseconds, DateTime.UtcNow),
+                new SnapshotTimingRow("workspace_info", swWorkspaceInfo.ElapsedMilliseconds, DateTime.UtcNow),
+            };
+            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings);
         }
 
         Console.Write("Pruning old snapshots... ");
@@ -95,17 +104,22 @@ public static class IndexRunner
         Console.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
     }
 
-    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath)
+    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings = null)
     {
         var snapshotId = SnapshotId.New();
         var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
         var snapshotIdStr = snapshotId.ToString();
+        var timings = setupTimings != null ? new List<SnapshotTimingRow>(setupTimings) : new List<SnapshotTimingRow>();
 
+        // Step: Manifest Save (includes initial FTS build)
+        var swManifest = Stopwatch.StartNew();
         Console.Write("Saving snapshot to database... ");
 
         manifest.Save(store, store, workspaceInfo.DocumentContents, jsonExportPath);
 
         Console.WriteLine("done.");
+        swManifest.Stop();
+        timings.Add(new SnapshotTimingRow("manifest_save", swManifest.ElapsedMilliseconds, DateTime.UtcNow));
 
         store.MarkSnapshotInProgress(snapshotIdStr);
 
@@ -115,6 +129,8 @@ public static class IndexRunner
             int totalEdges = 0;
             int totalDiagnostics = 0;
 
+            // Step: Full Extraction Loop (compilation load + fact extraction + db writes)
+            var swExtract = Stopwatch.StartNew();
             await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution))
             {
                 var projectName = project.Name;
@@ -134,6 +150,8 @@ public static class IndexRunner
 
                 Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
             }
+            swExtract.Stop();
+            timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds, DateTime.UtcNow));
 
             Console.WriteLine();
             Console.WriteLine($"Index complete for snapshot {snapshotIdStr}");
@@ -146,6 +164,8 @@ public static class IndexRunner
 
             if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
             {
+                // Step: Semantic Diff
+                var swDiff = Stopwatch.StartNew();
                 Console.WriteLine();
                 Console.Write("Computing semantic diff from previous snapshot... ");
 
@@ -155,13 +175,24 @@ public static class IndexRunner
                 store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
 
                 Console.WriteLine($"done ({diffChanges.Count} changes).");
+                swDiff.Stop();
+                timings.Add(new SnapshotTimingRow("semantic_diff", swDiff.ElapsedMilliseconds, DateTime.UtcNow));
             }
 
             store.MarkSnapshotComplete(snapshotIdStr);
+
+            // Persist all timings
+            try { store.SaveTimings(snapshotIdStr, timings); }
+            catch (Exception ex) { Console.Error.WriteLine($"WARNING: Failed to save timings: {ex.Message}"); }
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"ERROR: Full index failed, snapshot {snapshotIdStr} left in 'in_progress' state: {ex.Message}");
+
+            // Try to save whatever timings we have
+            try { store.SaveTimings(snapshotIdStr, timings); }
+            catch { }
+
             throw;
         }
     }

@@ -89,6 +89,7 @@ namespace Lurp.Storage
                 new Migration_009_PerSnapshotSymbolData(),
                 new Migration_010_AddLastChangedSnapshotId(),
                 new Migration_011_SnapshotStatus(),
+                new Migration_012_SnapshotTimings(),
             ];
 
         internal static void RunTest(string testDbPath)

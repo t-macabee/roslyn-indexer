@@ -25,8 +25,9 @@ public class Program
         if (args.Contains("--mode=simulate-move"))  { SimulateMoveHandler.Run(args);    return; }
         if (args.Contains("--mode=simulate-remove")){ SimulateRemoveHandler.Run(args);  return; }
         if (args.Contains("--mode=audit"))          { AuditHandler.Run(args);           return; }
+        if (args.Contains("--mode=timings"))       { TimingsHandler.Run(args);         return; }
 
-        Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=context, --mode=status, --mode=simulate-rename, --mode=simulate-move, --mode=simulate-remove, or --mode=audit.");
+        Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=context, --mode=status, --mode=timings, --mode=simulate-rename, --mode=simulate-move, --mode=simulate-remove, or --mode=audit.");
         Console.Error.WriteLine("  Note: For --mode=index, use --strategy=<incremental|full> (default: full on first run, incremental on subsequent runs).");
         Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
         Console.Error.WriteLine("  Note: 'structure' is served by --mode=context --intent=inspect.");
@@ -50,6 +51,7 @@ public class Program
         Console.WriteLine("  --mode=impact              Trace the impact path of a changed symbol.");
         Console.WriteLine("  --mode=context             Assemble a context capsule for a symbol.");
         Console.WriteLine("  --mode=status              Show the current database status.");
+        Console.WriteLine("  --mode=timings             Show step-by-step timing data for a snapshot.");
         Console.WriteLine("  --mode=simulate-rename     Simulate renaming a symbol and show affected references.");
         Console.WriteLine("  --mode=simulate-move       Simulate moving a symbol to a new namespace.");
         Console.WriteLine("  --mode=simulate-remove     Simulate removing a symbol and show cascading impact.");
@@ -104,6 +106,13 @@ public class Program
         Console.WriteLine("                          the latest snapshot and reports freshness mismatches.");
         Console.WriteLine("                          Without it, only schema version and latest snapshot");
         Console.WriteLine("                          ID are reported.");
+        Console.WriteLine("    --json                Emit structured JSON instead of plain text.");
+        Console.WriteLine();
+        Console.WriteLine("TIMINGS (--mode=timings)");
+        Console.WriteLine("  Required:");
+        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
+        Console.WriteLine("  Options:");
+        Console.WriteLine("    --snapshot=<id>       Show timings for a specific snapshot (default: latest).");
         Console.WriteLine("    --json                Emit structured JSON instead of plain text.");
         Console.WriteLine();
         Console.WriteLine("SNAPSHOT LIFECYCLE");

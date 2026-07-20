@@ -82,6 +82,7 @@ internal sealed class SnapshotPruner(string dbPath)
         [
             "edges", "diagnostics", "annotations", "snapshot_symbols",
             "projects", "snapshot_documents", "source_fts", "symbol_fts",
+            "snapshot_timings",
         ];
 
         foreach (var table in tables)

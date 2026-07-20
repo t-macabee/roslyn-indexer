@@ -94,6 +94,13 @@ internal static class StatusHandler
     {
         if (asJson)
         {
+            var storeForJson = new SqliteIndexStore(dbPath);
+            storeForJson.Open(dbPath);
+            List<SnapshotTimingRow>? timings = null;
+            try { timings = storeForJson.GetTimings(latestSnapshotId); }
+            catch { }
+            finally { storeForJson.Close(); }
+
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 database_path = dbPath,
@@ -101,6 +108,8 @@ internal static class StatusHandler
                 latest_snapshot_id = latestSnapshotId,
                 freshness_checked = false,
                 note = "Pass --solution=path or set INDEXER_SOLUTION_PATH to check freshness against the current workspace.",
+                timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
+                timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
             }, new JsonSerializerOptions { WriteIndented = true }));
             return;
         }
@@ -109,12 +118,20 @@ internal static class StatusHandler
         Console.WriteLine($"Schema version: {schemaVersion}");
         Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
         Console.WriteLine("Freshness: unknown — pass --solution=path or set INDEXER_SOLUTION_PATH to compare against the current workspace.");
+        ShowTimingIfAvailable(dbPath, latestSnapshotId);
     }
 
     private static void ReportFreshness(string dbPath, int schemaVersion, string latestSnapshotId, WorkspaceFreshness.FreshnessResult freshness, bool asJson)
     {
         if (asJson)
         {
+            var storeForJson = new SqliteIndexStore(dbPath);
+            storeForJson.Open(dbPath);
+            List<SnapshotTimingRow>? timings = null;
+            try { timings = storeForJson.GetTimings(latestSnapshotId); }
+            catch { }
+            finally { storeForJson.Close(); }
+
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 database_path = dbPath,
@@ -128,6 +145,8 @@ internal static class StatusHandler
                     document = m.Document?.ToString(),
                     detail = m.Detail,
                 }),
+                timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
+                timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
             }, new JsonSerializerOptions { WriteIndented = true }));
             return;
         }
@@ -140,6 +159,32 @@ internal static class StatusHandler
         foreach (var mismatch in freshness.Mismatches)
         {
             Console.WriteLine($"  [{mismatch.Kind}] {mismatch.Description}");
+        }
+
+        ShowTimingIfAvailable(dbPath, latestSnapshotId);
+    }
+
+    private static void ShowTimingIfAvailable(string dbPath, string snapshotId)
+    {
+        try
+        {
+            var store = new SqliteIndexStore(dbPath);
+            store.Open(dbPath);
+            var timings = store.GetTimings(snapshotId);
+            store.Close();
+
+            if (timings.Count == 0) return;
+
+            var totalMs = timings.Sum(t => t.ElapsedMs);
+            Console.WriteLine($"Timing summary ({totalMs} ms total):");
+            foreach (var t in timings)
+            {
+                Console.WriteLine($"  {t.StepName}: {t.ElapsedMs} ms");
+            }
+        }
+        catch
+        {
+            // Timings are optional; silently skip on error
         }
     }
 

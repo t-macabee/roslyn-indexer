@@ -28,5 +28,8 @@ namespace Lurp.Storage
         List<string> GetSymbolIdsInSnapshot(string snapshotId);
 
         void PruneOldSnapshots(int keep = 3);
+
+        void SaveTimings(string snapshotId, IEnumerable<SnapshotTimingRow> timings);
+        List<SnapshotTimingRow> GetTimings(string snapshotId);
     }
 }

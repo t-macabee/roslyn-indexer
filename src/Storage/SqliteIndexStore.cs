@@ -49,6 +49,10 @@
             => _snapshotStore.DeleteSnapshotSymbolsBySymbolIds(snapshotId, symbolIds);
         public List<string> GetSymbolIdsInSnapshot(string snapshotId) => _snapshotStore.GetSymbolIdsInSnapshot(snapshotId);
         public void PruneOldSnapshots(int keep = 3) => _snapshotStore.PruneOldSnapshots(keep);
+        public void SaveTimings(string snapshotId, IEnumerable<SnapshotTimingRow> timings)
+            => _snapshotStore.SaveTimings(snapshotId, timings);
+        public List<SnapshotTimingRow> GetTimings(string snapshotId)
+            => _snapshotStore.GetTimings(snapshotId);
 
         // ── IDeclarationStore ──────────────────────────────────────────────
 

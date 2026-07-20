@@ -80,6 +80,20 @@ namespace Lurp.Storage
         public DateTime CreatedAtUtc { get; init; }
     }
 
+    public sealed class SnapshotTimingRow
+    {
+        public string StepName { get; }
+        public long ElapsedMs { get; }
+        public DateTime CreatedAtUtc { get; }
+
+        public SnapshotTimingRow(string stepName, long elapsedMs, DateTime createdAtUtc)
+        {
+            StepName = stepName ?? throw new ArgumentNullException(nameof(stepName));
+            ElapsedMs = elapsedMs;
+            CreatedAtUtc = createdAtUtc;
+        }
+    }
+
     public class DocumentVersion
     {
         public string DocumentId { get; init; } = string.Empty;
