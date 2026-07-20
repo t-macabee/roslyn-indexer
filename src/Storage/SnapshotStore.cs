@@ -1,3 +1,7 @@
+#if CODE_ANALYSIS
+using System.Diagnostics.CodeAnalysis;
+#endif
+
 namespace Lurp.Storage;
 
 #if CODE_ANALYSIS

@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
+    <!-- Enables [SuppressMessage("NDepend", ...)] attributes to compile into IL so NDepend honors them.
+         Defined in all configs so suppressions apply whether NDepend analyzes Debug or Release. -->
+    <DefineConstants>$(DefineConstants);CODE_ANALYSIS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
