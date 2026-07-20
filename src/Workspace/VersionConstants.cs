@@ -2,7 +2,7 @@ namespace Lurp.Workspace;
 
 internal static class VersionConstants
 {
-    internal const int DatabaseSchemaVersion = 11;
+    internal const int DatabaseSchemaVersion = 12;
     internal const int OutputSchemaVersion = 2;
     internal const string ExtractorVersion = "1.3.0";
     internal const string ToolVersion = "1.3.0";
