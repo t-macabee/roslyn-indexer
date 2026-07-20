@@ -195,7 +195,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
     private async Task<int> FinalizeSnapshotAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotIdStr, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> affectedProjects)
     {
         Console.Write("Updating cross-document edges... ");
-        var crossDocEdgesProcessed = await UpdateCrossDocumentEdgesAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects);
+        var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
+        var crossDocEdgesProcessed = await refresher.RefreshAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects);
         Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
 
         Console.Write("Rebuilding FTS5 search index... ");
@@ -282,123 +283,6 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         }
 
         return affected;
-    }
-
-    private async Task<int> UpdateCrossDocumentEdgesAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> alreadyProcessedProjects)
-    {
-        var affectedPaths = FindAffectedDocPathsForCrossDocEdges(previousSnapshotId, changedPaths);
-        if (affectedPaths.Count == 0)
-            return 0;
-
-        var affectedProjectNames = ResolveCrossDocProjectNames(solution, affectedPaths, alreadyProcessedProjects);
-        if (affectedProjectNames.Count == 0)
-            return 0;
-
-        return await ProcessCrossDocCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames);
-    }
-
-    private HashSet<string> FindAffectedDocPathsForCrossDocEdges(string previousSnapshotId, HashSet<string> changedPaths)
-    {
-        var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
-        if (oldDocVersionIds.Count == 0)
-            return [];
-
-        var changedSymbolIds = _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, oldDocVersionIds);
-        if (changedSymbolIds.Count == 0)
-            return [];
-
-        var affectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var symbolId in changedSymbolIds)
-        {
-            var incomingEdges = _store.GetIncomingEdges(previousSnapshotId, symbolId);
-            foreach (var edge in incomingEdges)
-            {
-                if (edge.SourceDocumentPath != null && !changedPaths.Contains(edge.SourceDocumentPath))
-                    affectedPaths.Add(edge.SourceDocumentPath);
-            }
-        }
-        return affectedPaths;
-    }
-
-    private HashSet<string> ResolveCrossDocProjectNames(Solution solution, HashSet<string> affectedPaths, HashSet<string> alreadyProcessedProjects)
-    {
-        Console.WriteLine($"  ({affectedPaths.Count} documents need cross-document edge refresh)");
-
-        var affectedProjectNames = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var project in solution.Projects)
-        {
-            foreach (var doc in project.Documents)
-            {
-                if (doc.FilePath == null) continue;
-                var relPath = GetRelativePath(doc.FilePath, _gitRoot);
-                if (affectedPaths.Contains(relPath))
-                {
-                    affectedProjectNames.Add(project.Name);
-                    break;
-                }
-            }
-        }
-
-        affectedProjectNames.ExceptWith(alreadyProcessedProjects);
-        return affectedProjectNames;
-    }
-
-    private async Task<int> ProcessCrossDocCompilationsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedProjectNames)
-    {
-        var affectedProjectPaths = CollectProjectDocPaths(solution, affectedProjectNames);
-        _store.DeleteEdgesByDocumentPaths(newSnapshotId, affectedProjectPaths);
-
-        var crossDocCompilations = await LoadCrossDocCompilationsAsync(solution, affectedProjectNames);
-        var crossDocAssemblyIdentities = crossDocCompilations.Values
-            .Select(c => c.Assembly.Identity.GetDisplayName()).ToList();
-        _store.DeleteEdgesWithNullDocumentPathForAssemblies(newSnapshotId, crossDocAssemblyIdentities);
-
-        int totalEdges = 0;
-        foreach (var project in solution.Projects)
-        {
-            if (!affectedProjectNames.Contains(project.Name))
-                continue;
-            if (!crossDocCompilations.TryGetValue(project.Name, out var compilation))
-                continue;
-
-            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, _skipAdapters,
-                logWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
-                logError: msg => Console.Error.Write($"  ERROR: {msg} "));
-            _store.SaveEdges(newSnapshotId, result.Edges);
-            totalEdges += result.Edges.Count;
-            Console.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");
-        }
-        return totalEdges;
-    }
-
-    private HashSet<string> CollectProjectDocPaths(Solution solution, HashSet<string> projectNames)
-    {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var project in solution.Projects)
-        {
-            if (!projectNames.Contains(project.Name))
-                continue;
-            foreach (var doc in project.Documents)
-            {
-                if (doc.FilePath == null) continue;
-                paths.Add(GetRelativePath(doc.FilePath, _gitRoot));
-            }
-        }
-        return paths;
-    }
-
-    private async Task<Dictionary<string, Compilation>> LoadCrossDocCompilationsAsync(Solution solution, HashSet<string> projectNames)
-    {
-        var compilations = new Dictionary<string, Compilation>(StringComparer.Ordinal);
-        foreach (var project in solution.Projects)
-        {
-            if (!projectNames.Contains(project.Name))
-                continue;
-            var compilation = await project.GetCompilationAsync();
-            if (compilation != null)
-                compilations[project.Name] = compilation;
-        }
-        return compilations;
     }
 
     private static string GetRelativePath(string fullPath, string gitRoot)
