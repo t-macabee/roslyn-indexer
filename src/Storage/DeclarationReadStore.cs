@@ -21,8 +21,12 @@ internal sealed class DeclarationReadStore(string dbPath)
         using var command = connection.CreateCommand();
         command.CommandText = @"
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
-                   (SELECT COUNT(*) FROM declarations d WHERE d.symbol_id = s.symbol_id) AS decl_count,
-                   (SELECT MAX(d.is_partial) FROM declarations d WHERE d.symbol_id = s.symbol_id) AS is_partial
+                   (SELECT COUNT(*) FROM declarations d
+                    JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+                    WHERE d.symbol_id = s.symbol_id AND sd.snapshot_id = @snapshotId) AS decl_count,
+                   (SELECT MAX(d.is_partial) FROM declarations d
+                    JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+                    WHERE d.symbol_id = s.symbol_id AND sd.snapshot_id = @snapshotId) AS is_partial
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
             WHERE s.symbol_id = @symbolId AND ss.snapshot_id = @snapshotId;

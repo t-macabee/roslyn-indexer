@@ -52,6 +52,6 @@ public sealed class DeclarationStore : IDeclarationStore
         return new IndexedSymbolInfo(symbolId: sid, kind: kind, fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4),
             metadataJson: reader.IsDBNull(5) ? null : reader.GetString(5),
             declarationCount: reader.GetInt32(6),
-            isPartial: reader.GetInt32(7) == 1);
+            isPartial: !reader.IsDBNull(7) && reader.GetInt32(7) == 1);
     }
 }

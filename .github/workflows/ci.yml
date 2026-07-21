@@ -43,6 +43,20 @@ jobs:
           --collect:"XPlat Code Coverage"
           --results-directory ./TestResults
 
+      - name: Flatten coverage files for NDepend
+        # dotnet test --collect:"XPlat Code Coverage" writes to
+        # TestResults/<guid>/coverage.cobertura.xml. NDepend's CoverageDir
+        # searches non-recursively, so copy the file to TestResults/ root.
+        shell: pwsh
+        run: |
+          $coverageFiles = Get-ChildItem -Path ./TestResults -Recurse -Filter "coverage.cobertura.xml"
+          if ($coverageFiles.Count -gt 0) {
+            Copy-Item -Path $coverageFiles[0].FullName -Destination "./TestResults/coverage.cobertura.xml" -Force
+            Write-Host "Copied $($coverageFiles[0].FullName) to ./TestResults/coverage.cobertura.xml"
+          } else {
+            Write-Warning "No coverage.cobertura.xml found in TestResults subdirectories"
+          }
+
       - name: Install NDepend
         run: choco install ndepend --no-progress -y
 

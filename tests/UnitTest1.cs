@@ -40,7 +40,9 @@ public class MigrationRunnerTests : IDisposable
     {
         return new SymbolDeclaration
         {
-            SymbolId = symbolId != null ? SymbolId.Parse(symbolId) : new SymbolId(docCommentId, assembly, fqn),
+            SymbolId = symbolId != null
+            ? new SymbolId(SymbolId.Parse(symbolId).DocCommentId, SymbolId.Parse(symbolId).AssemblyIdentity, fqn)
+            : new SymbolId(docCommentId, assembly, fqn),
             Kind = kind,
             DocumentVersionId = docVersionId,
             FullSpan = new DeclarationSpan(fullS, fullE),
@@ -53,13 +55,13 @@ public class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
-    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsTen()
+    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsTwelve()
     {
         var runner = new MigrationRunner(_dbPath);
 
         runner.RunMigrations();
 
-        Assert.Equal(11, runner.GetCurrentSchemaVersion());
+        Assert.Equal(12, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -70,7 +72,7 @@ public class MigrationRunnerTests : IDisposable
         runner.RunMigrations();
         runner.RunMigrations();
 
-        Assert.Equal(11, runner.GetCurrentSchemaVersion());
+        Assert.Equal(12, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -343,7 +345,7 @@ public class MigrationRunnerTests : IDisposable
 
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(11, runner.GetCurrentSchemaVersion());
+        Assert.Equal(12, runner.GetCurrentSchemaVersion());
 
         using var connection = new SqliteConnection($"Data Source={_dbPath}");
         connection.Open();
@@ -898,7 +900,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(11, runner.GetCurrentSchemaVersion());
+            Assert.Equal(12, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -919,7 +921,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(11, runner.GetCurrentSchemaVersion());
+            Assert.Equal(12, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1090,10 +1092,10 @@ public class MigrationRunnerTests : IDisposable
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(11, runner.GetCurrentSchemaVersion());
+            Assert.Equal(12, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(11, runner.GetCurrentSchemaVersion());
+            Assert.Equal(12, runner.GetCurrentSchemaVersion());
         }
 
         [Fact]
@@ -1530,10 +1532,10 @@ class Derived : Base {
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(11, runner.GetCurrentSchemaVersion());
+            Assert.Equal(12, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(11, runner.GetCurrentSchemaVersion());
+            Assert.Equal(12, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1936,10 +1938,10 @@ class Derived : Base {
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(11, runner.GetCurrentSchemaVersion());
+            Assert.Equal(12, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(11, runner.GetCurrentSchemaVersion());
+            Assert.Equal(12, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
