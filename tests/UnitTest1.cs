@@ -1680,7 +1680,7 @@ class Derived : Base {
             }
 
             var differ = new SemanticDiffer(store, store, store);
-            var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var symbolAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolAdded);
             Assert.NotNull(symbolAdded);
@@ -1724,7 +1724,7 @@ class Derived : Base {
             store.SaveEdges(toSnapshotId, toEdges);
 
             var differ = new SemanticDiffer(store, store, store);
-            var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var edgeAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeAdded);
             Assert.NotNull(edgeAdded);
@@ -1779,7 +1779,7 @@ class Derived : Base {
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
             var differ = new SemanticDiffer(store, store, store);
-            var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
             Assert.NotNull(signatureChanged);
@@ -1828,7 +1828,7 @@ class Derived : Base {
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
             var differ = new SemanticDiffer(store, store, store);
-            var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var symbolRenamed = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRenamed);
             Assert.NotNull(symbolRenamed);
@@ -1877,7 +1877,7 @@ class Derived : Base {
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
             var differ = new SemanticDiffer(store, store, store);
-            var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             Assert.Empty(changes);
         }

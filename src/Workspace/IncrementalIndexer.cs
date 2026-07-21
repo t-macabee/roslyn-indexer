@@ -93,6 +93,10 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
             sw6.Stop();
             timings.Add(new SnapshotTimingRow("re_extraction", sw6.ElapsedMilliseconds, DateTime.UtcNow));
 
+            // Step 6b: Prune symbols that were in changed documents' old versions
+            // but are no longer present after re-extraction
+            PruneRemovedSymbols(previousSnapshotId, newSnapshotIdStr, oldDocVersionIdSet, changedPaths);
+
             // Step 7: Cross-doc Edge Refresh + Step 8: FTS Rebuild + Diff (in FinalizeSnapshotAsync)
             totalEdges += await FinalizeSnapshotAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects, timings);
         }
@@ -194,6 +198,40 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         return (totalDecl, totalEdge, totalDiag);
     }
 
+    private void PruneRemovedSymbols(string previousSnapshotId, string newSnapshotIdStr, HashSet<string> oldDocVersionIdSet, HashSet<string> changedPaths)
+    {
+        if (oldDocVersionIdSet.Count == 0)
+            return;
+
+        // Get symbols that were in the old document versions
+        var oldSymbolIds = _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, oldDocVersionIdSet);
+        if (oldSymbolIds.Count == 0)
+            return;
+
+        // After re-extraction, look up new document version IDs for the changed paths
+        var pathToNewVersion = _store.GetDocumentVersionIdsByPath(newSnapshotIdStr);
+        var newDocVersionIdSet = new HashSet<string>(
+            changedPaths
+                .Where(p => pathToNewVersion.ContainsKey(p))
+                .Select(p => pathToNewVersion[p]));
+
+        if (newDocVersionIdSet.Count == 0)
+            return;
+
+        // Get symbols that are in the new document versions
+        var newSymbolIds = new HashSet<string>(
+            _store.GetSymbolIdsByDocumentVersionIds(newSnapshotIdStr, newDocVersionIdSet));
+
+        // Prune symbols that were in old but not in new
+        var removedSymbolIds = oldSymbolIds.Where(id => !newSymbolIds.Contains(id)).ToList();
+        if (removedSymbolIds.Count > 0)
+        {
+            Console.Write($"Pruning {removedSymbolIds.Count} removed symbols... ");
+            _store.DeleteSnapshotSymbolsBySymbolIds(newSnapshotIdStr, removedSymbolIds);
+            Console.WriteLine("done.");
+        }
+    }
+
     private async Task<int> FinalizeSnapshotAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotIdStr, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> affectedProjects, List<SnapshotTimingRow> timings)
     {
         // Step 7: Cross-doc Edge Refresh
@@ -215,9 +253,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         try
         {
             var differ = new SemanticDiffer(_store, _store, _store);
-            var diffChanges = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr);
+            var (diffChanges, skippedComparisons) = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr);
             _store.SaveSemanticChanges(previousSnapshotId, newSnapshotIdStr, diffChanges);
-            Console.WriteLine($"done ({diffChanges.Count} changes).");
+            Console.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
         }
         catch (Exception ex)
         {

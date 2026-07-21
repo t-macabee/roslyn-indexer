@@ -16,6 +16,10 @@ internal sealed class DeclarationMaintenanceStore(string dbPath)
 
     internal void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds)
     {
+        var idList = documentVersionIds.ToList();
+        if (idList.Count == 0)
+            return;
+
         using var connection = CreateConnection();
         using var transaction = connection.BeginTransaction();
         try
@@ -24,10 +28,13 @@ internal sealed class DeclarationMaintenanceStore(string dbPath)
             command.Transaction = transaction;
             command.CommandText = @"
                 DELETE FROM declarations
-                WHERE document_version_id IN (" + string.Join(", ", documentVersionIds.Select((_, i) => $"@p{i}")) + @");
+                WHERE document_version_id IN (" + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + @")
+                  AND document_version_id NOT IN (
+                      SELECT DISTINCT document_version_id FROM snapshot_documents
+                  );
             ";
             int i = 0;
-            foreach (var id in documentVersionIds)
+            foreach (var id in idList)
                 command.Parameters.AddWithValue($"@p{i++}", id);
             command.ExecuteNonQuery();
             transaction.Commit();

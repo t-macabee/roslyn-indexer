@@ -10,6 +10,19 @@ namespace Lurp.Storage
         public string CompilerVersion { get; init; } = string.Empty;
         public DateTime CreatedAtUtc { get; init; }
         public List<DocumentVersion> Documents { get; init; } = [];
+        public int DatabaseSchemaVersion { get; init; }
+        public int OutputSchemaVersion { get; init; }
+        public string ExtractorVersion { get; init; } = string.Empty;
+        public string ToolVersion { get; init; } = string.Empty;
+        public string? PreviousSnapshotId { get; init; }
+        public List<ProjectRow> Projects { get; init; } = [];
+    }
+
+    public sealed class ProjectRow
+    {
+        public string Name { get; init; } = string.Empty;
+        public string TargetFramework { get; init; } = string.Empty;
+        public List<string> References { get; init; } = [];
     }
 
     public sealed class EdgeRecord
@@ -67,6 +80,7 @@ namespace Lurp.Storage
         public const string EdgeRemoved = "edge_removed";
         public const string AttributeChanged = "attribute_changed";
         public const string BodyOnlyChanged = "body_only_changed";
+        public const string ComparisonUnavailable = "comparison_unavailable";
     }
 
     public sealed class SemanticChange

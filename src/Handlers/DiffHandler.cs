@@ -36,13 +36,14 @@ internal static class DiffHandler
         try
         {
             var differ = new SemanticDiffer(store, store, store);
-            var changes = differ.ComputeDiff(fromSnapshot, toSnapshot);
+            var (changes, skippedComparisons) = differ.ComputeDiff(fromSnapshot, toSnapshot);
 
             var json = JsonSerializer.Serialize(new
             {
                 from_snapshot = fromSnapshot,
                 to_snapshot = toSnapshot,
                 change_count = changes.Count,
+                skipped_comparisons = skippedComparisons,
                 changes = changes.Select(c => new
                 {
                     change_id = c.ChangeId,

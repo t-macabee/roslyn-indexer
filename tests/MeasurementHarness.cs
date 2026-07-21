@@ -574,7 +574,7 @@ public class NewType
                 {
                     var swDiff = System.Diagnostics.Stopwatch.StartNew();
                     var differ = new SemanticDiffer(store, store, store);
-                    var diffChanges = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
+                    var (diffChanges, _) = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
                     store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
                     swDiff.Stop();
                     timings.Add(new SnapshotTimingRow("semantic_diff", swDiff.ElapsedMilliseconds, DateTime.UtcNow));

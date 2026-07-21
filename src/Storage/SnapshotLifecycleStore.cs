@@ -55,24 +55,43 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
             command.Parameters.AddWithValue("@builtAtUtc", manifest.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
             command.Parameters.AddWithValue("@sdkVersion", manifest.SdkVersion ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("@compilerVersion", manifest.CompilerVersion ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("@databaseSchemaVersion", (object)DBNull.Value);
-            command.Parameters.AddWithValue("@outputSchemaVersion", (object)DBNull.Value);
-            command.Parameters.AddWithValue("@extractorVersion", (object)DBNull.Value);
-            command.Parameters.AddWithValue("@toolVersion", (object)DBNull.Value);
-            command.Parameters.AddWithValue("@previousSnapshotId", (object)DBNull.Value);
+            command.Parameters.AddWithValue("@databaseSchemaVersion", (object)manifest.DatabaseSchemaVersion);
+            command.Parameters.AddWithValue("@outputSchemaVersion", (object)manifest.OutputSchemaVersion);
+            command.Parameters.AddWithValue("@extractorVersion", (object?)manifest.ExtractorVersion ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@toolVersion", (object?)manifest.ToolVersion ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@previousSnapshotId", (object?)manifest.PreviousSnapshotId ?? (object)DBNull.Value);
             command.ExecuteNonQuery();
 
-            if (manifest.Documents.Any())
+            if (manifest.Projects.Any())
             {
-                command.CommandText = @"
-                    INSERT INTO projects (snapshot_id, name, target_framework)
-                    VALUES (@snapshotId, @name, @targetFramework);
-                ";
-                command.Parameters.Clear();
-                command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
-                command.Parameters.AddWithValue("@name", "DefaultProject");
-                command.Parameters.AddWithValue("@targetFramework", (object)DBNull.Value);
-                command.ExecuteNonQuery();
+                foreach (var project in manifest.Projects)
+                {
+                    command.CommandText = @"
+                        INSERT INTO projects (snapshot_id, name, target_framework)
+                        VALUES (@snapshotId, @name, @targetFramework);
+                        SELECT last_insert_rowid();
+                    ";
+                    command.Parameters.Clear();
+                    command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
+                    command.Parameters.AddWithValue("@name", project.Name);
+                    command.Parameters.AddWithValue("@targetFramework", (object?)project.TargetFramework ?? (object)DBNull.Value);
+                    var projectId = command.ExecuteScalar();
+
+                    if (project.References.Count > 0 && projectId != null)
+                    {
+                        foreach (var reference in project.References)
+                        {
+                            command.CommandText = @"
+                                INSERT INTO project_references (project_id, referenced_project_name)
+                                VALUES (@projectId, @referencedProjectName);
+                            ";
+                            command.Parameters.Clear();
+                            command.Parameters.AddWithValue("@projectId", (long)projectId);
+                            command.Parameters.AddWithValue("@referencedProjectName", reference);
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                }
             }
 
             foreach (var doc in manifest.Documents)
@@ -145,7 +164,9 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
         using var command = connection.CreateCommand();
         command.CommandText = @"
             SELECT s.snapshot_id, s.workspace_id, w.git_root, w.solution_path,
-                   s.sdk_version, s.compiler_version, s.built_at_utc
+                   s.sdk_version, s.compiler_version, s.built_at_utc,
+                   s.database_schema_version, s.output_schema_version,
+                   s.extractor_version, s.tool_version, s.previous_snapshot_id
             FROM snapshots s
             JOIN workspaces w ON w.workspace_id = s.workspace_id
             WHERE s.workspace_id = @workspaceId
@@ -167,6 +188,11 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
         var compilerVersion = reader.IsDBNull(5) ? null : reader.GetString(5);
         var builtAtUtc = DateTime.Parse(reader.GetString(6), CultureInfo.InvariantCulture,
             DateTimeStyles.RoundtripKind);
+        var databaseSchemaVersion = reader.IsDBNull(7) ? 0 : reader.GetInt32(7);
+        var outputSchemaVersion = reader.IsDBNull(8) ? 0 : reader.GetInt32(8);
+        var extractorVersion = reader.IsDBNull(9) ? null : reader.GetString(9);
+        var toolVersion = reader.IsDBNull(10) ? null : reader.GetString(10);
+        var previousSnapshotId = reader.IsDBNull(11) ? null : reader.GetString(11);
 
         var documents = new List<DocumentVersion>();
         using var docCommand = connection.CreateCommand();
@@ -205,6 +231,11 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
             CompilerVersion = compilerVersion ?? "",
             CreatedAtUtc = builtAtUtc,
             Documents = documents,
+            DatabaseSchemaVersion = databaseSchemaVersion,
+            OutputSchemaVersion = outputSchemaVersion,
+            ExtractorVersion = extractorVersion ?? "",
+            ToolVersion = toolVersion ?? "",
+            PreviousSnapshotId = previousSnapshotId,
         };
     }
 

@@ -174,7 +174,7 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
             if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
             {
                 var differ = new Workspace.SemanticDiffer(store, store, store);
-                var diffChanges = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
+                var (diffChanges, _) = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
                 store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
             }
 

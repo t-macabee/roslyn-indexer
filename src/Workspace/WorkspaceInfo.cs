@@ -63,6 +63,8 @@ public sealed class WorkspaceInfo
         var normalizedRoot = Path.GetFullPath(gitRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
+        var gitIgnore = GitIgnoreMatcher.Load(normalizedRoot);
+
         foreach (var project in solution.Projects)
         {
             foreach (var document in project.Documents)
@@ -70,6 +72,11 @@ public sealed class WorkspaceInfo
                 if (document.FilePath == null) continue;
 
                 var relPath = GetRelativePath(document.FilePath, normalizedRoot);
+
+                // Skip build output directories and .gitignore-matched paths
+                if (IsBuildOutputPath(relPath) || gitIgnore.IsIgnored(relPath))
+                    continue;
+
                 var docId = new DocumentId(relPath);
 
                 var bytes = File.ReadAllBytes(document.FilePath);
@@ -88,6 +95,19 @@ public sealed class WorkspaceInfo
         }
 
         return (map, contentMap, generatedDocs);
+    }
+
+    private static bool IsBuildOutputPath(string relPath)
+    {
+        var normalized = relPath.Replace('\\', '/');
+
+        if (normalized.StartsWith("bin/", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith("obj/", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("/bin/", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("/obj/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
     }
 
     private static bool IsGeneratedDocument(Document document, byte[] bytes, string relPath)

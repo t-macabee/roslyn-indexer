@@ -93,6 +93,25 @@ internal sealed class SnapshotPruner(string dbPath)
             cmd.ExecuteNonQuery();
         }
 
+        // Clean up orphaned project references
+        cmd.CommandText = @"
+            DELETE FROM project_references
+            WHERE project_id NOT IN (SELECT project_id FROM projects);
+        ";
+        cmd.Parameters.Clear();
+        cmd.ExecuteNonQuery();
+
+        // Clean up orphaned declarations whose document versions are no longer
+        // referenced by any snapshot
+        cmd.CommandText = @"
+            DELETE FROM declarations
+            WHERE document_version_id NOT IN (
+                SELECT DISTINCT document_version_id FROM snapshot_documents
+            );
+        ";
+        cmd.Parameters.Clear();
+        cmd.ExecuteNonQuery();
+
         cmd.CommandText = "DELETE FROM semantic_changes WHERE from_snapshot_id = @sid OR to_snapshot_id = @sid;";
         cmd.Parameters.Clear();
         cmd.Parameters.AddWithValue("@sid", snapshotId);

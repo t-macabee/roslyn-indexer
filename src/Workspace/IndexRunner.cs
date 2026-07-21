@@ -178,11 +178,11 @@ public static class IndexRunner
                 Console.Write("Computing semantic diff from previous snapshot... ");
 
                 var differ = new SemanticDiffer(store, store, store);
-                var diffChanges = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
+                var (diffChanges, skippedComparisons) = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
 
                 store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
 
-                Console.WriteLine($"done ({diffChanges.Count} changes).");
+                Console.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
                 swDiff.Stop();
                 timings.Add(new SnapshotTimingRow("semantic_diff", swDiff.ElapsedMilliseconds, DateTime.UtcNow));
             }

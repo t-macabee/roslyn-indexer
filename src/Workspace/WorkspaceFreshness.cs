@@ -61,9 +61,12 @@ public static class WorkspaceFreshness
     {
         var currentDocs = current.Documents;
         var storedDocs = stored.DocumentVersions;
+        var generatedDocs = current.GeneratedDocuments;
 
         foreach (var (docId, _) in storedDocs)
         {
+            if (generatedDocs.Contains(docId))
+                continue;
             if (!currentDocs.ContainsKey(docId))
             {
                 yield return new SnapshotMismatch(MismatchKind.DocumentRemoved,$"Document removed: '{docId}'.",Document: docId,Detail: null);
@@ -72,6 +75,8 @@ public static class WorkspaceFreshness
 
         foreach (var (docId, currentHash) in currentDocs)
         {
+            if (generatedDocs.Contains(docId))
+                continue;
             if (!storedDocs.TryGetValue(docId, out var storedHash))
             {
                 yield return new SnapshotMismatch(MismatchKind.DocumentAdded,$"Document added: '{docId}'.",Document: docId,Detail: $"hash (new) = {currentHash}");

@@ -17,9 +17,10 @@ namespace Lurp.Workspace
             _edgeStore = edgeStore ?? throw new ArgumentNullException(nameof(edgeStore));
         }
 
-        public List<SemanticChange> ComputeDiff(string fromSnapshotId, string toSnapshotId)
+        public (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiff(string fromSnapshotId, string toSnapshotId)
         {
             var changes = new List<SemanticChange>();
+            int skippedComparisons = 0;
 
             var fromSymbols = GetSymbolIdsInSnapshot(fromSnapshotId);
             var toSymbols = GetSymbolIdsInSnapshot(toSnapshotId);
@@ -51,7 +52,12 @@ namespace Lurp.Workspace
                 var toInfo = _declarationStore.GetSymbolInfo(symbolId, toSnapshotId);
 
                 if (fromInfo == null || toInfo == null)
+                {
+                    skippedComparisons++;
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.ComparisonUnavailable, symbolId,
+                        new { reason = $"Symbol info missing: from={(fromInfo == null ? "missing" : "present")}, to={(toInfo == null ? "missing" : "present")}" }));
                     continue;
+                }
 
                 if (!string.Equals(fromInfo.FullyQualifiedName, toInfo.FullyQualifiedName, StringComparison.Ordinal) &&
                     fromInfo.SymbolId.DocCommentId == toInfo.SymbolId.DocCommentId)
@@ -75,8 +81,9 @@ namespace Lurp.Workspace
                 var metaChanges = CompareMetadata(symbolId, fromInfo.MetadataJson, toInfo.MetadataJson, fromSnapshotId, toSnapshotId);
                 changes.AddRange(metaChanges);
 
-                var sourceChanges = CompareSource(symbolId, fromSnapshotId, toSnapshotId);
+                var (sourceChanges, sourceSkipped) = CompareSource(symbolId, fromSnapshotId, toSnapshotId);
                 changes.AddRange(sourceChanges);
+                skippedComparisons += sourceSkipped;
             }
 
             var fromEdges = _edgeStore.GetEdges(fromSnapshotId);
@@ -103,7 +110,7 @@ namespace Lurp.Workspace
                 }
             }
 
-            return changes;
+            return (changes, skippedComparisons);
         }
 
         private List<string> GetSymbolIdsInSnapshot(string snapshotId)
@@ -154,7 +161,7 @@ namespace Lurp.Workspace
             return changes;
         }
 
-        private List<SemanticChange> CompareSource(string symbolId, string fromSnapshotId, string toSnapshotId)
+        private (List<SemanticChange> Changes, int Skipped) CompareSource(string symbolId, string fromSnapshotId, string toSnapshotId)
         {
             var changes = new List<SemanticChange>();
 
@@ -162,7 +169,14 @@ namespace Lurp.Workspace
             var toSig = _declarationStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Signature);
 
             if (fromSig == null || toSig == null)
-                return changes;
+            {
+                if (fromSig == null && toSig == null)
+                    return (changes, 0);
+
+                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.ComparisonUnavailable, symbolId,
+                    new { reason = $"Source comparison unavailable: from_signature={(fromSig == null ? "missing" : "present")}, to_signature={(toSig == null ? "missing" : "present")}" }));
+                return (changes, 1);
+            }
 
             var fromBody = _declarationStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Body);
             var toBody = _declarationStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Body);
@@ -175,7 +189,7 @@ namespace Lurp.Workspace
                 }
             }
 
-            return changes;
+            return (changes, 0);
         }
 
         private static string GetSimpleName(string? fqn)

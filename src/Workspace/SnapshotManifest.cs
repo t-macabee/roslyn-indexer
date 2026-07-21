@@ -128,6 +128,15 @@ public sealed class SnapshotManifest
             };
         }).ToList();
 
+        var projects = TargetFrameworks.Select(kvp => new Storage.ProjectRow
+        {
+            Name = kvp.Key,
+            TargetFramework = kvp.Value,
+            References = ProjectGraph.TryGetValue(kvp.Key, out var refs)
+                ? refs.OrderBy(x => x, StringComparer.Ordinal).ToList()
+                : [],
+        }).ToList();
+
         return new Storage.SnapshotRow
         {
             SnapshotId = SnapshotId.ToString(),
@@ -138,6 +147,12 @@ public sealed class SnapshotManifest
             CompilerVersion = CompilerVersion,
             CreatedAtUtc = BuiltAtUtc,
             Documents = documents,
+            DatabaseSchemaVersion = DatabaseSchemaVersion,
+            OutputSchemaVersion = OutputSchemaVersion,
+            ExtractorVersion = ExtractorVersion,
+            ToolVersion = ToolVersion,
+            PreviousSnapshotId = PreviousSnapshotId?.ToString(),
+            Projects = projects,
         };
     }
 
@@ -151,6 +166,14 @@ public sealed class SnapshotManifest
             documentVersions[docId] = versionId;
         }
 
+        var targetFrameworks = new Dictionary<string, string>(StringComparer.Ordinal);
+        var projectGraph = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        foreach (var project in storage.Projects)
+        {
+            targetFrameworks[project.Name] = project.TargetFramework;
+            projectGraph[project.Name] = project.References.ToArray();
+        }
+
         return new SnapshotManifest
         {
             SnapshotId = SnapshotId.Parse(storage.SnapshotId),
@@ -159,13 +182,15 @@ public sealed class SnapshotManifest
             DocumentVersions = documentVersions,
             SdkVersion = storage.SdkVersion,
             CompilerVersion = storage.CompilerVersion,
-            TargetFrameworks = [],
-            ProjectGraph = [],
-            DatabaseSchemaVersion = 0,
-            OutputSchemaVersion = 0,
-            ExtractorVersion = "",
-            ToolVersion = "",
-            PreviousSnapshotId = null,
+            TargetFrameworks = targetFrameworks,
+            ProjectGraph = projectGraph,
+            DatabaseSchemaVersion = storage.DatabaseSchemaVersion,
+            OutputSchemaVersion = storage.OutputSchemaVersion,
+            ExtractorVersion = storage.ExtractorVersion,
+            ToolVersion = storage.ToolVersion,
+            PreviousSnapshotId = storage.PreviousSnapshotId != null
+                ? SnapshotId.Parse(storage.PreviousSnapshotId)
+                : null,
         };
     }
 
