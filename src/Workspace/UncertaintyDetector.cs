@@ -103,7 +103,7 @@ namespace Lurp.Workspace
                 {
                     if (edge.Kind != EdgeKind.MayDispatchTo.ToString())
                         continue;
-                    if (edge.Provenance == "compiler_proved" || edge.Provenance == "framework_derived")
+                    if (edge.Provenance == Provenance.CompilerProved || edge.Provenance == Provenance.FrameworkDerived)
                         continue;
 
                     capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, $"Dispatch candidate '{edge.TargetSymbolId}' was resolved with evidence level '{edge.Provenance}'. Manually verify that the runtime dispatch reaches the correct implementation."));
@@ -129,7 +129,7 @@ namespace Lurp.Workspace
                 {
                     if (!frameworkKinds.Contains(edge.Kind))
                         continue;
-                    if (edge.Provenance != "convention")
+                    if (edge.Provenance != Provenance.Convention)
                         continue;
 
                     capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, $"Convention-based framework binding: the '{edge.Kind}' edge was inferred by naming convention, not explicit registration. Verify that the expected target is reached at runtime."));

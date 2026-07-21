@@ -30,13 +30,13 @@ internal sealed class TypeOfReflectionExtractor(ReflectionExtractionContext cont
             if (!seen.Add(key))
                 continue;
 
-            var loc = ReflectionExtractionContext.GetLocationInfo(typeOfExpr.GetLocation());
+            var loc = context.GetLocationInfo(typeOfExpr.GetLocation());
             edges.Add(new EdgeRecord
             {
                 SourceSymbolId = sourceId,
                 TargetSymbolId = targetId,
                 Kind = EdgeKind.ReflectionTypeRef.ToString(),
-                Provenance = "compiler_proved",
+                Provenance = Provenance.CompilerProved,
                 SnapshotId = context.SnapshotId,
                 ExtractorVersion = ExtractorConstants.ReflectionExtractor,
                 SourceDocumentPath = loc.path,

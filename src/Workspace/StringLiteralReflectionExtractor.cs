@@ -53,14 +53,14 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
 
             var detailJson = JsonSerializer.Serialize(new { literal_value = text, matched_name = matchedName });
 
-            var loc = ReflectionExtractionContext.GetLocationInfo(literal.GetLocation());
+            var loc = context.GetLocationInfo(literal.GetLocation());
 
             edges.Add(new EdgeRecord
             {
                 SourceSymbolId = sourceId,
                 TargetSymbolId = matchedSymbolId,
                 Kind = EdgeKind.ReflectionNameCandidate.ToString(),
-                Provenance = "name_candidate",
+                Provenance = Provenance.NameCandidate,
                 SnapshotId = context.SnapshotId,
                 ExtractorVersion = ExtractorConstants.ReflectionExtractor,
                 SourceDocumentPath = loc.path,

@@ -98,7 +98,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             SourceSymbolId = sourceId,
             TargetSymbolId = targetId,
             Kind = kind,
-            Provenance = "roslyn",
+            Provenance = Provenance.CompilerProved,
             SnapshotId = context.SnapshotId,
             ExtractorVersion = VersionConstants.ExtractorVersion,
             SourceDocumentPath = loc?.path,

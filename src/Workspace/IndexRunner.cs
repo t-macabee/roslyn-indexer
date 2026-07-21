@@ -121,8 +121,6 @@ public static class IndexRunner
         swManifest.Stop();
         timings.Add(new SnapshotTimingRow("manifest_save", swManifest.ElapsedMilliseconds, DateTime.UtcNow));
 
-        store.MarkSnapshotInProgress(snapshotIdStr);
-
         try
         {
             int totalDeclarations = 0;

@@ -50,7 +50,7 @@ internal sealed class VirtualOverrideExtractor(PolymorphismExtractionContext con
         if (!seen.Add(key))
             return;
 
-        edges.Add(context.MakeMayDispatchEdge(rootId, overrideId, overrideMember, "compiler_proved"));
+        edges.Add(context.MakeMayDispatchEdge(rootId, overrideId, overrideMember, Provenance.CompilerProved));
     }
 
     private static IMethodSymbol WalkToRootOverride(IMethodSymbol method)

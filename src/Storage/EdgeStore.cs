@@ -30,7 +30,7 @@ public sealed class EdgeStore : IEdgeStore
             foreach (var edge in edges)
             {
                 command.CommandText = @"
-                    INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column) VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn);
+                    INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated) VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated);
                 ";
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -44,6 +44,7 @@ public sealed class EdgeStore : IEdgeStore
                 command.Parameters.AddWithValue("@sourceStartColumn", (object?)edge.SourceStartColumn ?? DBNull.Value);
                 command.Parameters.AddWithValue("@sourceEndLine", (object?)edge.SourceEndLine ?? DBNull.Value);
                 command.Parameters.AddWithValue("@sourceEndColumn", (object?)edge.SourceEndColumn ?? DBNull.Value);
+                command.Parameters.AddWithValue("@isCrossGenerated", edge.IsCrossGenerated);
                 command.ExecuteNonQuery();
             }
 
@@ -136,7 +137,8 @@ public sealed class EdgeStore : IEdgeStore
                 SELECT source_symbol_id, target_symbol_id, kind, provenance,
                        snapshot_id, extractor_version,
                        source_document_path, source_start_line, source_start_column,
-                       source_end_line, source_end_column
+                       source_end_line, source_end_column,
+                       is_cross_generated
                 FROM edges
                 WHERE snapshot_id = @snapshotId
                   AND (source_symbol_id = @symbolId OR target_symbol_id = @symbolId)
@@ -150,7 +152,8 @@ public sealed class EdgeStore : IEdgeStore
                 SELECT source_symbol_id, target_symbol_id, kind, provenance,
                        snapshot_id, extractor_version,
                        source_document_path, source_start_line, source_start_column,
-                       source_end_line, source_end_column
+                       source_end_line, source_end_column,
+                       is_cross_generated
                 FROM edges
                 WHERE snapshot_id = @snapshotId
                 ORDER BY edge_id;
@@ -169,7 +172,8 @@ public sealed class EdgeStore : IEdgeStore
             SELECT source_symbol_id, target_symbol_id, kind, provenance,
                    snapshot_id, extractor_version,
                    source_document_path, source_start_line, source_start_column,
-                   source_end_line, source_end_column
+                   source_end_line, source_end_column,
+                   is_cross_generated
             FROM edges
             WHERE snapshot_id = @snapshotId AND kind = @kind
             ORDER BY edge_id;
@@ -188,7 +192,8 @@ public sealed class EdgeStore : IEdgeStore
             SELECT source_symbol_id, target_symbol_id, kind, provenance,
                    snapshot_id, extractor_version,
                    source_document_path, source_start_line, source_start_column,
-                   source_end_line, source_end_column
+                   source_end_line, source_end_column,
+                   is_cross_generated
             FROM edges
             WHERE snapshot_id = @snapshotId AND target_symbol_id = @symbolId
             ORDER BY edge_id;
@@ -207,7 +212,8 @@ public sealed class EdgeStore : IEdgeStore
             SELECT source_symbol_id, target_symbol_id, kind, provenance,
                    snapshot_id, extractor_version,
                    source_document_path, source_start_line, source_start_column,
-                   source_end_line, source_end_column
+                   source_end_line, source_end_column,
+                   is_cross_generated
             FROM edges
             WHERE snapshot_id = @snapshotId AND source_symbol_id = @symbolId
             ORDER BY edge_id;
@@ -274,11 +280,12 @@ public sealed class EdgeStore : IEdgeStore
         using var connection = CreateConnection();
         using var command = connection.CreateCommand();
         command.CommandText = @"
-            INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column)
+            INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated)
             SELECT @toSnapshotId, source_symbol_id, target_symbol_id, kind, provenance,
                    extractor_version, source_document_path,
                    source_start_line, source_start_column,
-                   source_end_line, source_end_column
+                   source_end_line, source_end_column,
+                   is_cross_generated
             FROM edges
             WHERE snapshot_id = @fromSnapshotId;
         ";
@@ -425,6 +432,7 @@ public sealed class EdgeStore : IEdgeStore
                 SourceStartColumn = reader.IsDBNull(8) ? null : reader.GetInt32(8),
                 SourceEndLine = reader.IsDBNull(9) ? null : reader.GetInt32(9),
                 SourceEndColumn = reader.IsDBNull(10) ? null : reader.GetInt32(10),
+                IsCrossGenerated = reader.GetBoolean(11),
             });
         }
         return results;

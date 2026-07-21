@@ -38,6 +38,7 @@ namespace Lurp.Storage
         public int? SourceStartColumn { get; init; }
         public int? SourceEndLine { get; init; }
         public int? SourceEndColumn { get; init; }
+        public bool IsCrossGenerated { get; init; }
     }
 
     public sealed class DiagnosticRecord

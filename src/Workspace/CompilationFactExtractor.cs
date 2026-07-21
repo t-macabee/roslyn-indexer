@@ -38,7 +38,9 @@ public static class CompilationFactExtractor
         }
 
 
-        var memberEdgeExtractor = new MemberEdgeExtractor(compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId);
+        var gitRoot = workspaceInfo.Id.GitRoot;
+
+        var memberEdgeExtractor = new MemberEdgeExtractor(compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, gitRoot);
 
         try
         {
@@ -50,13 +52,13 @@ public static class CompilationFactExtractor
         }
 
 
-        var polyExtractor = new PolymorphismExtractor(compilation, snapshotId);
+        var polyExtractor = new PolymorphismExtractor(compilation, snapshotId, gitRoot);
 
         edges.AddRange(polyExtractor.ExtractAll());
 
         try
         {
-            var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId);
+            var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId, gitRoot);
             edges.AddRange(reflectionExtractor.Extract());
         }
         catch (Exception ex)

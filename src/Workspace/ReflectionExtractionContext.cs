@@ -6,11 +6,13 @@ namespace Lurp.Workspace;
 internal sealed class ReflectionExtractionContext
 {
     private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = [];
+    private readonly string _gitRoot;
 
-    internal ReflectionExtractionContext(Compilation compilation, string snapshotId)
+    internal ReflectionExtractionContext(Compilation compilation, string snapshotId, string gitRoot)
     {
         Compilation = compilation;
         SnapshotId = snapshotId;
+        _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
         AssemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
 
         KnownTypeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -76,14 +78,16 @@ internal sealed class ReflectionExtractionContext
         return null;
     }
 
-    internal static (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)
+    internal (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)
         GetLocationInfo(Location location)
     {
         if (location == null || !location.IsInSource)
             return (null, null, null, null, null);
 
         var lineSpan = location.GetLineSpan();
-        return (location.SourceTree?.FilePath, lineSpan.StartLinePosition.Line, lineSpan.StartLinePosition.Character, lineSpan.EndLinePosition.Line, lineSpan.EndLinePosition.Character);
+        var filePath = location.SourceTree?.FilePath;
+        var relativePath = string.IsNullOrEmpty(filePath) ? null : DocumentChangeDetector.GetRelativePath(filePath, _gitRoot);
+        return (relativePath, lineSpan.StartLinePosition.Line, lineSpan.StartLinePosition.Character, lineSpan.EndLinePosition.Line, lineSpan.EndLinePosition.Character);
     }
 
     internal static IEnumerable<INamedTypeSymbol> GetNamespaceTypeMembers(INamespaceSymbol ns)

@@ -72,8 +72,6 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         sw4.Stop();
         timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds, DateTime.UtcNow));
 
-        _store.MarkSnapshotInProgress(newSnapshotIdStr);
-
         int totalDeclarations = 0;
         int totalEdges = 0;
         int totalDiagnostics = 0;

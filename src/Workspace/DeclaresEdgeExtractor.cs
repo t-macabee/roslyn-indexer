@@ -40,7 +40,7 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
                     SourceSymbolId = typeId,
                     TargetSymbolId = memberId,
                     Kind = EdgeKind.Declares.ToString(),
-                    Provenance = "compiler_proved",
+                    Provenance = Provenance.CompilerProved,
                     SnapshotId = context.SnapshotId,
                     ExtractorVersion = ExtractorConstants.DeclaresExtractor,
                     SourceDocumentPath = loc?.path,

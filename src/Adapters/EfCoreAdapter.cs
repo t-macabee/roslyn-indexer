@@ -1,3 +1,4 @@
+using Lurp.Workspace;
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -117,7 +118,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 SourceSymbolId = sourceId,
                 TargetSymbolId = targetId,
                 Kind = EdgeKind.MapsTo.ToString(),
-                Provenance = "framework_derived",
+                Provenance = Provenance.FrameworkDerived,
                 SnapshotId = snapshotId,
                 ExtractorVersion = "efcore-v1",
             });
@@ -221,7 +222,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 SourceSymbolId = dbContextId,
                 TargetSymbolId = navTypeId,
                 Kind = EdgeKind.References.ToString(),
-                Provenance = "framework_derived",
+                Provenance = Provenance.FrameworkDerived,
                 SnapshotId = snapshotId,
                 ExtractorVersion = "efcore-v1",
             });

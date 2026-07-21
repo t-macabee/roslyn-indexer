@@ -1,3 +1,4 @@
+using Lurp.Workspace;
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -215,7 +216,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             SourceSymbolId = sourceId,
             TargetSymbolId = targetId,
             Kind = kind,
-            Provenance = "framework_derived",
+            Provenance = Provenance.FrameworkDerived,
             SnapshotId = snapshotId,
             ExtractorVersion = "serialization-v1",
         };

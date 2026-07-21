@@ -5,10 +5,11 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Lurp.Workspace;
 
-internal sealed class MemberEdgeExtractionContext(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId)
+internal sealed class MemberEdgeExtractionContext(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot)
 {
     private readonly IReadOnlyDictionary<DocumentId, DocumentVersionId> _documentVersions = documentVersions ?? throw new ArgumentNullException(nameof(documentVersions));
     private readonly IReadOnlySet<DocumentId> _generatedDocuments = generatedDocuments ?? throw new ArgumentNullException(nameof(generatedDocuments));
+    private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
     private readonly string _assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
 
     internal Compilation Compilation { get; } = compilation ?? throw new ArgumentNullException(nameof(compilation));
@@ -76,18 +77,12 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
         var sourceDocumentPath = location?.path;
         var isSourceGenerated = IsGeneratedDocument(sourceDocumentPath);
 
-        var provenance = "compiler_proved";
-        if (isSourceGenerated)
-        {
-            provenance += ":cross_generated";
-        }
-
         return new EdgeRecord
         {
             SourceSymbolId = sourceId,
             TargetSymbolId = targetId,
             Kind = kind,
-            Provenance = provenance,
+            Provenance = Provenance.CompilerProved,
             SnapshotId = SnapshotId,
             ExtractorVersion = extractorVersion,
             SourceDocumentPath = sourceDocumentPath,
@@ -95,6 +90,7 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
             SourceStartColumn = location?.sc,
             SourceEndLine = location?.el,
             SourceEndColumn = location?.ec,
+            IsCrossGenerated = isSourceGenerated,
         };
     }
 
@@ -163,7 +159,7 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
             }
         }
 
-        return normalized;
+        return DocumentChangeDetector.GetRelativePath(filePath, _gitRoot);
     }
 
     internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree, Dictionary<SyntaxTree, SemanticModel> cache)

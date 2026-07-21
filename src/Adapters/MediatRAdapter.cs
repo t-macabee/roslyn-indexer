@@ -1,3 +1,4 @@
+using Lurp.Workspace;
 ﻿using Microsoft.CodeAnalysis;
 using Lurp.Storage;
 using EdgeKind = Lurp.Storage.EdgeKind;
@@ -88,7 +89,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
                 SourceSymbolId = requestId,
                 TargetSymbolId = handleMethodId,
                 Kind = EdgeKind.Handles.ToString(),
-                Provenance = "framework_derived",
+                Provenance = Provenance.FrameworkDerived,
                 SnapshotId = snapshotId,
                 ExtractorVersion = "mediatr-v1",
             });

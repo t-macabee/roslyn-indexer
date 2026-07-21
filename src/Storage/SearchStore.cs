@@ -172,7 +172,7 @@ public sealed class SearchStore : ISearchStore
             command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
         }
 
-        command.CommandText += " LIMIT 1;";
+        command.CommandText += " ORDER BY ss.fqn LIMIT 1;";
 
         command.Parameters.AddWithValue("@fqn", fqn);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -198,7 +198,7 @@ public sealed class SearchStore : ISearchStore
             command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
         }
 
-        command.CommandText += " LIMIT 1;";
+        command.CommandText += " ORDER BY ss.fqn LIMIT 1;";
 
         command.Parameters.AddWithValue("@pattern", $"{fqn}%");
         command.Parameters.AddWithValue("@snapshotId", snapshotId);

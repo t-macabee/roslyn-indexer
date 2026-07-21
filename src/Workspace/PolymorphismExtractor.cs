@@ -33,11 +33,11 @@ public sealed class PolymorphismExtractor
 {
     private readonly PolymorphismExtractionContext _context;
 
-    public PolymorphismExtractor(Compilation compilation, string snapshotId)
+    public PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
-        _context = new PolymorphismExtractionContext(compilation, snapshotId);
+        _context = new PolymorphismExtractionContext(compilation, snapshotId, gitRoot);
     }
 
     public List<EdgeRecord> ExtractAll()

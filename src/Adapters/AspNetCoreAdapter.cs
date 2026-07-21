@@ -1,3 +1,4 @@
+using Lurp.Workspace;
 ﻿using Microsoft.CodeAnalysis;
 using Lurp.Storage;
 using EdgeKind = Lurp.Storage.EdgeKind;
@@ -59,7 +60,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                     SourceSymbolId = routeSourceId,
                     TargetSymbolId = methodId,
                     Kind = EdgeKind.RoutesTo.ToString(),
-                    Provenance = "framework_derived",
+                    Provenance = Provenance.FrameworkDerived,
                     SnapshotId = snapshotId,
                     ExtractorVersion = Version,
                 });
@@ -153,7 +154,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             SourceSymbolId = sourceId,
             TargetSymbolId = targetId,
             Kind = kind,
-            Provenance = "framework_derived",
+            Provenance = Provenance.FrameworkDerived,
             SnapshotId = snapshotId,
             ExtractorVersion = "aspnetcore-v1",
         };

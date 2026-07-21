@@ -1289,7 +1289,7 @@ class Foo {
     void Bar() {}
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-decl");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-decl", "/");
 
             var edges = extractor.ExtractAll();
 
@@ -1309,7 +1309,7 @@ class Foo {
     void B() {}
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-calls");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-calls", "/");
 
             var edges = extractor.ExtractAll();
 
@@ -1330,7 +1330,7 @@ class Bar {
     void M() { var x = new Foo(); }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-ctor");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-ctor", "/");
 
             var edges = extractor.ExtractAll();
 
@@ -1352,7 +1352,7 @@ class Derived : Base {
     public override void M() {}
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-override");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-override", "/");
 
             var edges = extractor.ExtractAll();
 
@@ -1371,7 +1371,7 @@ class Foo {
     void M() { _field = 1; int x = _field; }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-rw");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-rw", "/");
 
             var edges = extractor.ExtractAll();
 
@@ -1394,7 +1394,7 @@ class Foo {
     string M() { return ""; }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-ret");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-ret", "/");
 
             var edges = extractor.ExtractAll();
 
@@ -1412,7 +1412,7 @@ class Foo {
     void M() { throw new System.InvalidOperationException(); }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-throw");
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-throw", "/");
 
             var edges = extractor.ExtractAll();
 
@@ -1445,7 +1445,7 @@ class Foo : IFoo {
     public void Bar() {}
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new PolymorphismExtractor(compilation, "snap-poly-iface");
+            var extractor = new PolymorphismExtractor(compilation, "snap-poly-iface", "/");
 
             var edges = extractor.ExtractAll();
 
@@ -1467,7 +1467,7 @@ class Derived : Base {
     public override void M() {}
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new PolymorphismExtractor(compilation, "snap-poly-virt");
+            var extractor = new PolymorphismExtractor(compilation, "snap-poly-virt", "/");
 
             var edges = extractor.ExtractAll();
 
@@ -2080,7 +2080,7 @@ class Derived : Base {
             var docVersions = CreateDocVersions("test.cs");
 
             var generatedDocs = new HashSet<DocumentId> { new("test.cs") };
-            var extractor = new MemberEdgeExtractor(compilation, docVersions, generatedDocs, "snap-b4-provenance");
+            var extractor = new MemberEdgeExtractor(compilation, docVersions, generatedDocs, "snap-b4-provenance", "/");
 
             var edges = extractor.ExtractAll();
 
@@ -2887,7 +2887,7 @@ class Bar {
     void M() { var t = typeof(Foo); }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new ReflectionExtractor(compilation, "snap-b6-typeof");
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-typeof", "/");
             var edges = extractor.Extract();
 
             var reflectionEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionTypeRef.ToString()).ToList();
@@ -2908,7 +2908,7 @@ class Baz {
     void M() { _ = nameof(Foo.Bar); }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new ReflectionExtractor(compilation, "snap-b6-nameof");
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-nameof", "/");
             var edges = extractor.Extract();
 
             var reflectionEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionMemberRef.ToString()).ToList();
@@ -2925,7 +2925,7 @@ class Bar {
     void M() { var s = ""SomeKnownType""; }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new ReflectionExtractor(compilation, "snap-b6-stringlit");
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-stringlit", "/");
             var edges = extractor.Extract();
 
             var nameEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionNameCandidate.ToString()).ToList();
@@ -2943,7 +2943,7 @@ class Bar {
     void M() { var t = System.Type.GetType(""Something""); }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new ReflectionExtractor(compilation, "snap-b6-unknown");
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-unknown", "/");
             var edges = extractor.Extract();
 
             var unknownEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionTargetUnknown.ToString()).ToList();
@@ -2960,7 +2960,7 @@ class Foo {
     void M() { int x = 42; }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new ReflectionExtractor(compilation, "snap-b6-none");
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-none", "/");
             var edges = extractor.Extract();
 
             Assert.Empty(edges);
@@ -2974,7 +2974,7 @@ class Bar {
     void M() { _ = nameof(UnknownType.UnknownMember); }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new ReflectionExtractor(compilation, "snap-b6-nameof-unresolved");
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-nameof-unresolved", "/");
             var edges = extractor.Extract();
 
             Assert.Empty(edges);
@@ -2991,7 +2991,7 @@ class Baz {
     void M() { var s = ""Bar""; }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new ReflectionExtractor(compilation, "snap-b6-stringlit-member");
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-stringlit-member", "/");
             var edges = extractor.Extract();
 
             var nameEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionNameCandidate.ToString()).ToList();
@@ -3012,7 +3012,7 @@ class Source {
     }
 }";
             var compilation = CreateCompilation(source);
-            var extractor = new ReflectionExtractor(compilation, "snap-b6-multi");
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-multi", "/");
             var edges = extractor.Extract();
 
             var typeRefEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionTypeRef.ToString()).ToList();
@@ -3041,7 +3041,7 @@ class Source {
                     MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                     MetadataReference.CreateFromFile(systemRuntimePath)
                 ]);
-            var extractor = new ReflectionExtractor(compilation, "snap-b6-activator");
+            var extractor = new ReflectionExtractor(compilation, "snap-b6-activator", "/");
             var edges = extractor.Extract();
 
             var unknownEdges = edges.Where(e => e.Kind == EdgeKind.ReflectionTargetUnknown.ToString()).ToList();

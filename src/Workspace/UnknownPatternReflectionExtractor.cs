@@ -33,13 +33,13 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
             if (!seen.Add(key))
                 continue;
 
-            var loc = ReflectionExtractionContext.GetLocationInfo(invocation.GetLocation());
+            var loc = context.GetLocationInfo(invocation.GetLocation());
             edges.Add(new EdgeRecord
             {
                 SourceSymbolId = sourceId,
                 TargetSymbolId = sourceId,
                 Kind = EdgeKind.ReflectionTargetUnknown.ToString(),
-                Provenance = "runtime_unknown",
+                Provenance = Provenance.RuntimeUnknown,
                 SnapshotId = context.SnapshotId,
                 ExtractorVersion = ExtractorConstants.ReflectionExtractor,
                 SourceDocumentPath = loc.path,

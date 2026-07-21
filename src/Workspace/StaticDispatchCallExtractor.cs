@@ -71,13 +71,13 @@ internal sealed class StaticDispatchCallExtractor(PolymorphismExtractionContext 
         if (!seen.Add(key))
             return;
 
-        var loc = PolymorphismExtractionContext.GetLocationInfo(invocation.GetLocation());
+        var loc = context.GetLocationInfo(invocation.GetLocation());
         edges.Add(new EdgeRecord
         {
             SourceSymbolId = callerId,
             TargetSymbolId = calleeId,
             Kind = EdgeKind.StaticallyCalls.ToString(),
-            Provenance = "compiler_proved",
+            Provenance = Provenance.CompilerProved,
             SnapshotId = context.SnapshotId,
             ExtractorVersion = ExtractorConstants.StaticallyCallsExtractor,
             SourceDocumentPath = loc.path,

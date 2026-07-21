@@ -7,11 +7,11 @@ public sealed class ReflectionExtractor
 {
     private readonly ReflectionExtractionContext _context;
 
-    public ReflectionExtractor(Compilation compilation, string snapshotId)
+    public ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
-        _context = new ReflectionExtractionContext(compilation, snapshotId);
+        _context = new ReflectionExtractionContext(compilation, snapshotId, gitRoot);
     }
 
     public List<EdgeRecord> Extract()

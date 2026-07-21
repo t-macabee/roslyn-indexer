@@ -106,7 +106,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 SourceSymbolId = sourceId,
                 TargetSymbolId = implTypeId,
                 Kind = EdgeKind.Registers.ToString(),
-                Provenance = "framework_derived",
+                Provenance = Provenance.FrameworkDerived,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = ctx.ExtractorVersion,
             });
@@ -174,7 +174,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 SourceSymbolId = sourceId,
                 TargetSymbolId = targetId,
                 Kind = EdgeKind.Registers.ToString(),
-                Provenance = "convention",
+                Provenance = Provenance.Convention,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = ctx.ExtractorVersion,
             });
@@ -280,7 +280,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 SourceSymbolId = sourceId,
                 TargetSymbolId = targetId,
                 Kind = EdgeKind.Registers.ToString(),
-                Provenance = "runtime_unknown",
+                Provenance = Provenance.RuntimeUnknown,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = ctx.ExtractorVersion,
             });

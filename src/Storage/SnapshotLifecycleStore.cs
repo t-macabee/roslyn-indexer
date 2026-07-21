@@ -47,7 +47,7 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId);
+                INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id, status) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId, 'in_progress');
             ";
             command.Parameters.Clear();
             command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
@@ -264,6 +264,7 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
             SELECT snapshot_id
             FROM snapshots
             WHERE workspace_id = @workspaceId
+              AND status = 'complete'
             ORDER BY built_at_utc;
         ";
         command.Parameters.AddWithValue("@workspaceId", workspaceId);

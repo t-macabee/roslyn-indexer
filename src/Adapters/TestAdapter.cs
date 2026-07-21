@@ -1,3 +1,4 @@
+using Lurp.Workspace;
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -142,7 +143,7 @@ public sealed class TestAdapter : IFrameworkAdapter
                 SourceSymbolId = productionId,
                 TargetSymbolId = context.TestMethodId,
                 Kind = EdgeKind.TestedBy.ToString(),
-                Provenance = "framework_derived",
+                Provenance = Provenance.FrameworkDerived,
                 SnapshotId = context.SnapshotId,
                 ExtractorVersion = "test-v1",
             });

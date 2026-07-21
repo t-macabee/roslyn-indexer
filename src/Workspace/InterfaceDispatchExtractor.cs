@@ -66,7 +66,7 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
         // If the implementing member is declared on *this* type directly
         // (rather than inherited from a base), it is compiler-proved.
         bool isDirect = SymbolEqualityComparer.Default.Equals(implMember.ContainingType, type);
-        string provenance = isDirect ? "compiler_proved" : "possible";
+        string provenance = isDirect ? Provenance.CompilerProved : Provenance.Possible;
 
         edges.Add(context.MakeMayDispatchEdge(ifaceMemberId, implMemberId, implMember, provenance));
     }

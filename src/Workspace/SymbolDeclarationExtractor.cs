@@ -47,7 +47,7 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
         if (string.IsNullOrEmpty(docCommentId))
             return;
 
-        var fqn = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var fqn = BuildFullyQualifiedName(symbol);
         var kind = MapKind(symbol);
         var metadataJson = BuildMetadataJson(symbol);
 
@@ -235,6 +235,21 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
             "utf-16-be" => Encoding.BigEndianUnicode,
             _ => Encoding.UTF8,
         };
+    }
+
+    private static string BuildFullyQualifiedName(ISymbol symbol)
+    {
+        var name = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        // Types already produce a full path like global::Namespace.TypeName.
+        // Members produce just the member name; prepend the containing type's FQN.
+        if (symbol is not INamedTypeSymbol && symbol.ContainingType != null)
+        {
+            var typeFqn = symbol.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            return $"{typeFqn}.{name}";
+        }
+
+        return name;
     }
 
     private static SymKind MapKind(ISymbol symbol)

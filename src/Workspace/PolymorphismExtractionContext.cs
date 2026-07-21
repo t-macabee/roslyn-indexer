@@ -7,11 +7,13 @@ namespace Lurp.Workspace;
 internal sealed class PolymorphismExtractionContext
 {
     private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = [];
+    private readonly string _gitRoot;
 
-    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId)
+    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot)
     {
         Compilation = compilation;
         SnapshotId = snapshotId;
+        _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
         AssemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
     }
 
@@ -55,13 +57,15 @@ internal sealed class PolymorphismExtractionContext
         };
     }
 
-    internal static string? GetDocumentPath(ISymbol symbol)
+    internal string? GetDocumentPath(ISymbol symbol)
     {
         var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
         if (syntaxRef == null)
             return null;
         var path = syntaxRef.SyntaxTree?.FilePath;
-        return string.IsNullOrEmpty(path) ? null : path.Replace('\\', '/');
+        if (string.IsNullOrEmpty(path))
+            return null;
+        return DocumentChangeDetector.GetRelativePath(path, _gitRoot);
     }
 
     internal static int? GetStartLine(ISymbol symbol)
@@ -100,14 +104,16 @@ internal sealed class PolymorphismExtractionContext
         return span.EndLinePosition.Character;
     }
 
-    internal static (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)
+    internal (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)
         GetLocationInfo(Location location)
     {
         if (location == null || !location.IsInSource)
             return (null, null, null, null, null);
 
         var lineSpan = location.GetLineSpan();
-        return (location.SourceTree?.FilePath?.Replace('\\', '/'),
+        var filePath = location.SourceTree?.FilePath;
+        var relativePath = string.IsNullOrEmpty(filePath) ? null : DocumentChangeDetector.GetRelativePath(filePath, _gitRoot);
+        return (relativePath,
                 lineSpan.StartLinePosition.Line,
                 lineSpan.StartLinePosition.Character,
                 lineSpan.EndLinePosition.Line,
