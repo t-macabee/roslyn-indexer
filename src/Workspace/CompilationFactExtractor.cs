@@ -68,11 +68,13 @@ public static class CompilationFactExtractor
 
         var adapters = AdapterRegistry.GetAdapters(skipAdapters);
 
+        var locationResolver = new EdgeLocationResolver(workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, gitRoot);
+
         foreach (var adapter in adapters)
         {
             try
             {
-                edges.AddRange(adapter.Extract(compilation, snapshotId));
+                edges.AddRange(adapter.Extract(compilation, snapshotId, locationResolver));
             }
             catch (Exception ex)
             {

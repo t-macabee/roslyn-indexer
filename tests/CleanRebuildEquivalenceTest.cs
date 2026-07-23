@@ -15,13 +15,13 @@ using Xunit;
 
 namespace Lurp.Storage.Tests;
 
-public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
+public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 {
     private readonly string _testDir;
     private readonly string _dbPath;
     private readonly string _solutionPath;
 
-    public CleanRebuildEquivalenceTest()
+    public PipelineEquivalenceTest()
     {
         _testDir = Path.Combine(
             Path.GetTempPath(),
@@ -237,81 +237,7 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
 
     private void CompareSnapshotsAreEquivalent(string snapshotB, string snapshotC)
     {
-        Assert.NotEqual(snapshotB, snapshotC);
-
-        var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
-
-        try
-        {
-
-            var symbolsB = store.GetSymbolIdsInSnapshot(snapshotB);
-            var symbolsC = store.GetSymbolIdsInSnapshot(snapshotC);
-            symbolsB.Sort(StringComparer.Ordinal);
-            symbolsC.Sort(StringComparer.Ordinal);
-
-            Assert.Equal(symbolsC.Count, symbolsB.Count);
-            Assert.True(
-                symbolsB.SequenceEqual(symbolsC, StringComparer.Ordinal),
-                $"Symbol set mismatch between incremental (B) and full rebuild (C).\n" +
-                $"  B count: {symbolsB.Count}, C count: {symbolsC.Count}\n" +
-                $"  Only in B: {string.Join(", ", symbolsB.Except(symbolsC, StringComparer.Ordinal).Take(10))}\n" +
-                $"  Only in C: {string.Join(", ", symbolsC.Except(symbolsB, StringComparer.Ordinal).Take(10))}");
-
-            var edgesB = store.GetEdges(snapshotB);
-            var edgesC = store.GetEdges(snapshotC);
-            NormalizeEdges(edgesB);
-            NormalizeEdges(edgesC);
-
-            Assert.Equal(edgesC.Count, edgesB.Count);
-            for (int i = 0; i < edgesC.Count && i < edgesB.Count; i++)
-            {
-                AssertEqual(edgesB[i], edgesC[i]);
-            }
-            if (edgesC.Count != edgesB.Count)
-            {
-                var bSet = edgesB.Select(e => $"{e.SourceSymbolId}|{e.TargetSymbolId}|{e.Kind}|{e.Provenance}").ToHashSet();
-                var cSet = edgesC.Select(e => $"{e.SourceSymbolId}|{e.TargetSymbolId}|{e.Kind}|{e.Provenance}").ToHashSet();
-                Assert.Fail($"Edge count mismatch: {edgesB.Count} vs {edgesC.Count}.\n" +
-                    $"Only in B: {string.Join(", ", bSet.Except(cSet).Take(10))}\n" +
-                    $"Only in C: {string.Join(", ", cSet.Except(bSet).Take(10))}");
-            }
-
-            var diagB = store.GetDiagnostics(snapshotB);
-            var diagC = store.GetDiagnostics(snapshotC);
-            NormalizeDiagnostics(diagB);
-            NormalizeDiagnostics(diagC);
-
-            Assert.Equal(diagC.Count, diagB.Count);
-            for (int i = 0; i < diagC.Count && i < diagB.Count; i++)
-            {
-                AssertEqual(diagB[i], diagC[i]);
-            }
-
-            var annB = store.GetAnnotations(snapshotB);
-            var annC = store.GetAnnotations(snapshotC);
-            NormalizeAnnotations(annB);
-            NormalizeAnnotations(annC);
-
-            Assert.Equal(annC.Count, annB.Count);
-            for (int i = 0; i < annC.Count && i < annB.Count; i++)
-            {
-                AssertEqual(annB[i], annC[i]);
-            }
-
-            // FTS row count equivalence: after incremental, symbol_fts and source_fts
-            // row counts must equal what a clean rebuild produces.
-            var ftsCountsB = GetFtsCounts(snapshotB);
-            var ftsCountsC = GetFtsCounts(snapshotC);
-            Assert.Equal(ftsCountsC.SourceRows, ftsCountsB.SourceRows);
-            Assert.Equal(ftsCountsC.SymbolRows, ftsCountsB.SymbolRows);
-
-            Console.WriteLine("    Symbols, edges, diagnostics, annotations, FTS rows: all match.");
-        }
-        finally
-        {
-            store.Close();
-        }
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(_dbPath, snapshotB, snapshotC);
     }
 
     private void CreateTestSolution()
@@ -637,90 +563,6 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
             """);
     }
 
-    private static void NormalizeEdges(List<EdgeRecord> edges)
-    {
-        // Normalize snapshot ID so edges from different snapshots can be compared.
-        foreach (var edge in edges)
-        {
-            var field = typeof(EdgeRecord).GetField("<SnapshotId>k__BackingField",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            if (field != null)
-                field.SetValue(edge, string.Empty);
-        }
-
-        edges.Sort((a, b) =>
-        {
-            int cmp = StringComparer.Ordinal.Compare(a.SourceSymbolId, b.SourceSymbolId);
-            if (cmp != 0) return cmp;
-            cmp = StringComparer.Ordinal.Compare(a.TargetSymbolId, b.TargetSymbolId);
-            if (cmp != 0) return cmp;
-            cmp = StringComparer.Ordinal.Compare(a.Kind, b.Kind);
-            if (cmp != 0) return cmp;
-            cmp = StringComparer.Ordinal.Compare(a.Provenance, b.Provenance);
-            if (cmp != 0) return cmp;
-            cmp = StringComparer.Ordinal.Compare(a.SourceDocumentPath ?? "", b.SourceDocumentPath ?? "");
-            if (cmp != 0) return cmp;
-            return (a.SourceStartLine ?? 0).CompareTo(b.SourceStartLine ?? 0);
-        });
-    }
-
-    private static void NormalizeDiagnostics(List<DiagnosticRecord> diags)
-    {
-        diags.Sort((a, b) =>
-        {
-            int cmp = StringComparer.Ordinal.Compare(a.DocumentPath ?? "", b.DocumentPath ?? "");
-            if (cmp != 0) return cmp;
-            cmp = StringComparer.Ordinal.Compare(a.Id, b.Id);
-            if (cmp != 0) return cmp;
-            return (a.StartLine ?? 0).CompareTo(b.StartLine ?? 0);
-        });
-    }
-
-    private static void NormalizeAnnotations(List<AnnotationRecord> annotations)
-    {
-        annotations.Sort((a, b) =>
-        {
-            int cmp = StringComparer.Ordinal.Compare(a.SymbolId, b.SymbolId);
-            if (cmp != 0) return cmp;
-            return StringComparer.Ordinal.Compare(a.Kind, b.Kind);
-        });
-    }
-
-    private static void AssertEqual(EdgeRecord expected, EdgeRecord actual)
-    {
-        Assert.Equal(expected.SourceSymbolId, actual.SourceSymbolId);
-        Assert.Equal(expected.TargetSymbolId, actual.TargetSymbolId);
-        Assert.Equal(expected.Kind, actual.Kind);
-        Assert.Equal(expected.Provenance, actual.Provenance);
-        Assert.Equal(expected.SnapshotId ?? "", actual.SnapshotId ?? "");
-        Assert.Equal(expected.ExtractorVersion ?? "", actual.ExtractorVersion ?? "");
-        Assert.Equal(expected.SourceDocumentPath ?? "", actual.SourceDocumentPath ?? "");
-        Assert.Equal(expected.SourceStartLine, actual.SourceStartLine);
-        Assert.Equal(expected.SourceEndLine, actual.SourceEndLine);
-        Assert.Equal(expected.SourceStartColumn, actual.SourceStartColumn);
-        Assert.Equal(expected.SourceEndColumn, actual.SourceEndColumn);
-    }
-
-    private static void AssertEqual(DiagnosticRecord expected, DiagnosticRecord actual)
-    {
-        Assert.Equal(expected.ProjectName, actual.ProjectName);
-        Assert.Equal(expected.DocumentPath, actual.DocumentPath);
-        Assert.Equal(expected.Severity, actual.Severity);
-        Assert.Equal(expected.Id, actual.Id);
-        Assert.Equal(expected.Message, actual.Message);
-        Assert.Equal(expected.StartLine, actual.StartLine);
-        Assert.Equal(expected.StartColumn, actual.StartColumn);
-        Assert.Equal(expected.EndLine, actual.EndLine);
-        Assert.Equal(expected.EndColumn, actual.EndColumn);
-    }
-
-    private static void AssertEqual(AnnotationRecord expected, AnnotationRecord actual)
-    {
-        Assert.Equal(expected.SymbolId, actual.SymbolId);
-        Assert.Equal(expected.Kind, actual.Kind);
-        Assert.Equal(expected.Value, actual.Value);
-    }
-
     private static async Task<List<(Project Project, Compilation Compilation)>> GetAllAsync(Solution solution)
     {
         var results = new List<(Project Project, Compilation Compilation)>();
@@ -735,30 +577,12 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
 
     private static void SqliteConnectionClearAllPools()
     {
-        try
-        {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        }
-        catch
-        {
-
-        }
+        SnapshotAssertions.SqliteConnectionClearAllPools();
     }
 
     private (int SourceRows, int SymbolRows) GetFtsCounts(string snapshotId)
     {
-        using var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM source_fts WHERE snapshot_id = @id;";
-        cmd.Parameters.AddWithValue("@id", snapshotId);
-        var sourceRows = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
-
-        cmd.CommandText = "SELECT COUNT(*) FROM symbol_fts WHERE snapshot_id = @id;";
-        var symbolRows = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
-
-        return (sourceRows, symbolRows);
+        return SnapshotAssertions.GetFtsCounts(_dbPath, snapshotId);
     }
 }
 

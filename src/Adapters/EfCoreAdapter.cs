@@ -12,21 +12,21 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
     public string Name => "EF Core";
     public string Version => "efcore-v1";
 
-    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId)
+    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
     {
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var allTypes = GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
 
-        ExtractDbContextMappings(compilation, allTypes, assemblyIdentity, snapshotId, edges, seen);
-        ExtractEntityTypeConfigurations(allTypes, assemblyIdentity, snapshotId, edges, seen);
+        ExtractDbContextMappings(compilation, allTypes, assemblyIdentity, snapshotId, edges, seen, locationResolver);
+        ExtractEntityTypeConfigurations(allTypes, assemblyIdentity, snapshotId, edges, seen, locationResolver);
 
         return edges;
     }
 
     private static void ExtractDbContextMappings(Compilation compilation, List<INamedTypeSymbol> allTypes, string assemblyIdentity, string snapshotId,
-        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
     {
         foreach (var type in allTypes)
         {
@@ -37,13 +37,13 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             if (dbContextId == null)
                 continue;
 
-            ExtractDbSetProperties(type, dbContextId, assemblyIdentity, snapshotId, edges, seen);
-            ExtractOnModelCreatingCalls(compilation, type, dbContextId, assemblyIdentity, snapshotId, edges, seen);
+            ExtractDbSetProperties(type, dbContextId, assemblyIdentity, snapshotId, edges, seen, locationResolver);
+            ExtractOnModelCreatingCalls(compilation, type, dbContextId, assemblyIdentity, snapshotId, edges, seen, locationResolver);
         }
     }
 
     private static void ExtractDbSetProperties(INamedTypeSymbol type, string dbContextId, string assemblyIdentity, string snapshotId,
-        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
     {
         foreach (var member in type.GetMembers())
         {
@@ -57,12 +57,12 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             var propId = MakeSymbolId(prop, assemblyIdentity);
             var sourceId = propId ?? dbContextId;
 
-            AddMapsToEdge(edges, seen, sourceId, entityTypeId, snapshotId);
+            AddMapsToEdge(edges, seen, sourceId, entityTypeId, snapshotId, locationResolver, prop);
         }
     }
 
     private static void ExtractOnModelCreatingCalls(Compilation compilation, INamedTypeSymbol type, string dbContextId, string assemblyIdentity, string snapshotId,
-        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
     {
         var onModelCreating = type.GetMembers()
             .OfType<IMethodSymbol>()
@@ -76,13 +76,13 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
             {
                 var semanticModel = compilation.GetSemanticModel(methodSyntax.SyntaxTree);
-                ExtractEntityCalls(methodSyntax, semanticModel, dbContextId, assemblyIdentity,snapshotId, edges, seen);
+                ExtractEntityCalls(methodSyntax, semanticModel, dbContextId, assemblyIdentity,snapshotId, edges, seen, locationResolver);
             }
         }
     }
 
     private static void ExtractEntityTypeConfigurations(List<INamedTypeSymbol> allTypes, string assemblyIdentity, string snapshotId,
-        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
     {
         foreach (var type in allTypes)
         {
@@ -103,16 +103,19 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 if (entityTypeId == null)
                     continue;
 
-                AddMapsToEdge(edges, seen, configId, entityTypeId, snapshotId);
+                AddMapsToEdge(edges, seen, configId, entityTypeId, snapshotId, locationResolver, type);
             }
         }
     }
 
-    private static void AddMapsToEdge(List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, string sourceId, string targetId, string snapshotId)
+    private static void AddMapsToEdge(List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, string sourceId, string targetId, string snapshotId,
+        EdgeLocationResolver locationResolver, ISymbol evidenceSymbol)
     {
         var key = (sourceId, targetId, EdgeKind.MapsTo.ToString());
         if (seen.Add(key))
         {
+            var (path, sl, sc, el, ec) = locationResolver.Resolve(evidenceSymbol);
+
             edges.Add(new EdgeRecord
             {
                 SourceSymbolId = sourceId,
@@ -121,6 +124,38 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = snapshotId,
                 ExtractorVersion = "efcore-v1",
+                SourceDocumentPath = path,
+                SourceStartLine = sl,
+                SourceStartColumn = sc,
+                SourceEndLine = el,
+                SourceEndColumn = ec,
+                IsCrossGenerated = locationResolver.IsGenerated(path),
+            });
+        }
+    }
+
+    private static void AddMapsToEdgeFromLocation(List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, string sourceId, string targetId, string snapshotId,
+        EdgeLocationResolver locationResolver, Location location)
+    {
+        var key = (sourceId, targetId, EdgeKind.MapsTo.ToString());
+        if (seen.Add(key))
+        {
+            var (path, sl, sc, el, ec) = locationResolver.Resolve(location);
+
+            edges.Add(new EdgeRecord
+            {
+                SourceSymbolId = sourceId,
+                TargetSymbolId = targetId,
+                Kind = EdgeKind.MapsTo.ToString(),
+                Provenance = Provenance.FrameworkDerived,
+                SnapshotId = snapshotId,
+                ExtractorVersion = "efcore-v1",
+                SourceDocumentPath = path,
+                SourceStartLine = sl,
+                SourceStartColumn = sc,
+                SourceEndLine = el,
+                SourceEndColumn = ec,
+                IsCrossGenerated = locationResolver.IsGenerated(path),
             });
         }
     }
@@ -164,7 +199,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         return false;
     }
 
-    private static void ExtractEntityCalls(MethodDeclarationSyntax methodSyntax,SemanticModel semanticModel,string dbContextId,string assemblyIdentity,string snapshotId,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
+    private static void ExtractEntityCalls(MethodDeclarationSyntax methodSyntax,SemanticModel semanticModel,string dbContextId,string assemblyIdentity,string snapshotId,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
     {
         foreach (var invocation in methodSyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
@@ -173,18 +208,18 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
             if (memberAccess.Name is GenericNameSyntax genericName && genericName.Identifier.Text == "Entity")
             {
-                ExtractEntityMethodMapping(genericName, semanticModel, dbContextId, assemblyIdentity, snapshotId, edges, seen);
+                ExtractEntityMethodMapping(genericName, semanticModel, dbContextId, assemblyIdentity, snapshotId, edges, seen, locationResolver);
             }
 
             if (memberAccess.Name.Identifier.Text is "HasOne" or "HasMany" or "WithOne" or "WithMany")
             {
-                ExtractNavigationTypeReference(invocation, semanticModel, dbContextId, assemblyIdentity, snapshotId, edges, seen);
+                ExtractNavigationTypeReference(invocation, semanticModel, dbContextId, assemblyIdentity, snapshotId, edges, seen, locationResolver);
             }
         }
     }
 
     private static void ExtractEntityMethodMapping(GenericNameSyntax genericName, SemanticModel semanticModel, string dbContextId, string assemblyIdentity, string snapshotId,
-        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
     {
         if (genericName.TypeArgumentList.Arguments.Count != 1)
             return;
@@ -197,11 +232,11 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         if (entityTypeId == null)
             return;
 
-        AddMapsToEdge(edges, seen, dbContextId, entityTypeId, snapshotId);
+        AddMapsToEdgeFromLocation(edges, seen, dbContextId, entityTypeId, snapshotId, locationResolver, genericName.GetLocation());
     }
 
     private static void ExtractNavigationTypeReference(InvocationExpressionSyntax invocation, SemanticModel semanticModel, string dbContextId, string assemblyIdentity, string snapshotId,
-        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
     {
         var symbolInfo = semanticModel.GetSymbolInfo(invocation);
         if (symbolInfo.Symbol is not IMethodSymbol navMethod || navMethod.TypeArguments.Length == 0)
@@ -217,6 +252,8 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         var key = (dbContextId, navTypeId, EdgeKind.References.ToString());
         if (seen.Add(key))
         {
+            var (path, sl, sc, el, ec) = locationResolver.Resolve(invocation.GetLocation());
+
             edges.Add(new EdgeRecord
             {
                 SourceSymbolId = dbContextId,
@@ -225,6 +262,12 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = snapshotId,
                 ExtractorVersion = "efcore-v1",
+                SourceDocumentPath = path,
+                SourceStartLine = sl,
+                SourceStartColumn = sc,
+                SourceEndLine = el,
+                SourceEndColumn = ec,
+                IsCrossGenerated = locationResolver.IsGenerated(path),
             });
         }
     }

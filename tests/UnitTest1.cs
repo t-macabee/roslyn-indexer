@@ -2419,6 +2419,15 @@ namespace Xunit {
                 [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)]);
         }
 
+
+        private static EdgeLocationResolver CreateTestLocationResolver()
+        {
+            return new EdgeLocationResolver(
+                new Dictionary<DocumentId, DocumentVersionId>(),
+                new HashSet<DocumentId>(),
+                ".");
+        }
+
         private static MetadataReference EmitStubAssembly(string assemblyName, string stubSource)
         {
             var stubTree = CSharpSyntaxTree.ParseText(stubSource, path: $"{assemblyName}.cs");
@@ -2482,7 +2491,7 @@ public class UsersController : ControllerBase
 
             var compilation = CreateCompilationWithStubs(source, AspNetCoreMvcStubs);
             var adapter = new AspNetCoreAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-aspnet-001");
+            var edges = adapter.Extract(compilation, "snap-b5-aspnet-001", CreateTestLocationResolver());
 
             Assert.NotEmpty(edges);
             Assert.Contains(edges, e => e.Kind == "RoutesTo");
@@ -2504,7 +2513,7 @@ public class OrdersController : ControllerBase
 ";
             var compilation = CreateCompilationWithStubs(source, AspNetCoreMvcStubs);
             var adapter = new AspNetCoreAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-aspnet-003");
+            var edges = adapter.Extract(compilation, "snap-b5-aspnet-003", CreateTestLocationResolver());
 
             Assert.NotEmpty(edges);
             Assert.Contains(edges, e => e.Kind == "RoutesTo");
@@ -2522,7 +2531,7 @@ public class PlainClass
 ";
             var compilation = CreateCompilation(source);
             var adapter = new AspNetCoreAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-aspnet-002");
+            var edges = adapter.Extract(compilation, "snap-b5-aspnet-002", CreateTestLocationResolver());
 
             Assert.Empty(edges);
         }
@@ -2546,7 +2555,7 @@ public class Startup
 ";
             var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs);
             var adapter = new DependencyInjectionAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-di-001");
+            var edges = adapter.Extract(compilation, "snap-b5-di-001", CreateTestLocationResolver());
 
             Assert.NotEmpty(edges);
             Assert.Contains(edges, e => e.Kind == "Registers" && e.TargetSymbolId.Contains("Service"));
@@ -2572,7 +2581,7 @@ public class Startup
 ";
             var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs);
             var adapter = new DependencyInjectionAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-di-003");
+            var edges = adapter.Extract(compilation, "snap-b5-di-003", CreateTestLocationResolver());
 
             Assert.NotEmpty(edges);
             Assert.Contains(edges, e => e.Kind == "Registers" && e.TargetSymbolId.Contains("Service"));
@@ -2597,7 +2606,7 @@ public class Startup
 ";
             var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs);
             var adapter = new DependencyInjectionAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-di-004");
+            var edges = adapter.Extract(compilation, "snap-b5-di-004", CreateTestLocationResolver());
 
             Assert.NotEmpty(edges);
             Assert.Contains(edges, e => e.Kind == "Registers" && e.TargetSymbolId.Contains("Service"));
@@ -2617,7 +2626,7 @@ public class UserCreatedHandler : INotificationHandler<UserCreatedEvent>
 ";
             var compilation = CreateCompilationWithMediatR(source);
             var adapter = new MediatRAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-mediatr-003");
+            var edges = adapter.Extract(compilation, "snap-b5-mediatr-003", CreateTestLocationResolver());
 
             Assert.NotEmpty(edges);
             Assert.Contains(edges, e => e.Kind == "Handles" && e.Provenance == "framework_derived");
@@ -2638,7 +2647,7 @@ public class GetUserHandler : IRequestHandler<GetUserQuery, string>
 ";
             var compilation = CreateCompilationWithMediatR(source);
             var adapter = new MediatRAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-mediatr-001");
+            var edges = adapter.Extract(compilation, "snap-b5-mediatr-001", CreateTestLocationResolver());
 
             Assert.NotEmpty(edges);
             Assert.Contains(edges, e => e.Kind == "Handles" && e.Provenance == "framework_derived");
@@ -2653,7 +2662,7 @@ public class Plain { }
 ";
             var compilation = CreateCompilation(source);
             var adapter = new MediatRAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-mediatr-002");
+            var edges = adapter.Extract(compilation, "snap-b5-mediatr-002", CreateTestLocationResolver());
 
             Assert.Empty(edges);
         }
@@ -2672,7 +2681,7 @@ public class AppDbContext : DbContext
 ";
             var compilation = CreateCompilationWithEfCore(source);
             var adapter = new EfCoreAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-ef-001");
+            var edges = adapter.Extract(compilation, "snap-b5-ef-001", CreateTestLocationResolver());
 
             Assert.NotEmpty(edges);
             Assert.Contains(edges, e => e.Kind == "MapsTo" && e.TargetSymbolId.Contains("User"));
@@ -2693,7 +2702,7 @@ public class UserProfile
 ";
             var compilation = CreateCompilation(source);
             var adapter = new SerializationAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-serial-001");
+            var edges = adapter.Extract(compilation, "snap-b5-serial-001", CreateTestLocationResolver());
 
             var emailEdges = edges.Where(e =>
                 e.Kind == "References" &&
@@ -2713,7 +2722,7 @@ public class Plain
 ";
             var compilation = CreateCompilation(source);
             var adapter = new SerializationAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-serial-002");
+            var edges = adapter.Extract(compilation, "snap-b5-serial-002", CreateTestLocationResolver());
 
             Assert.Empty(edges);
         }
@@ -2735,7 +2744,7 @@ public class BarTests
 ";
             var compilation = CreateCompilationWithStubs(source, XunitStubs, "MyProject.Tests");
             var adapter = new TestAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-test-001");
+            var edges = adapter.Extract(compilation, "snap-b5-test-001", CreateTestLocationResolver());
 
             Assert.NotEmpty(edges);
             Assert.Contains(edges, e => e.Kind == "TestedBy" && e.Provenance == "framework_derived");
@@ -2758,7 +2767,7 @@ public class Foo
                 [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)]);
 
             var adapter = new TestAdapter();
-            var edges = adapter.Extract(compilation, "snap-b5-test-002");
+            var edges = adapter.Extract(compilation, "snap-b5-test-002", CreateTestLocationResolver());
 
             Assert.Empty(edges);
         }

@@ -10,7 +10,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
     public string Name => "ASP.NET Core";
     public string Version => "aspnetcore-v1";
 
-    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId)
+    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
     {
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
@@ -31,7 +31,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 if (member is not IMethodSymbol method || method.MethodKind != MethodKind.Ordinary)
                     continue;
 
-                ProcessControllerAction(method, controllerId, assemblyIdentity, snapshotId, edges, seen);
+                ProcessControllerAction(method, controllerId, assemblyIdentity, snapshotId, edges, seen, locationResolver);
             }
         }
 
@@ -39,15 +39,19 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
     }
 
     private void ProcessControllerAction(IMethodSymbol method, string controllerId, string assemblyIdentity, string snapshotId,
-        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
     {
         var methodId = MakeSymbolId(method, assemblyIdentity);
         if (methodId == null)
             return;
 
+        // All edges from this action are anchored to the action method declaration
+        var (path, sl, sc, el, ec) = locationResolver.Resolve(method);
+        var isGenerated = locationResolver.IsGenerated(path);
+
         var declaresKey = (controllerId, methodId, EdgeKind.Declares.ToString());
         if (seen.Add(declaresKey))
-            edges.Add(MakeEdge(controllerId, methodId, EdgeKind.Declares.ToString(), snapshotId, assemblyIdentity));
+            edges.Add(MakeEdge(controllerId, methodId, EdgeKind.Declares.ToString(), snapshotId, path, sl, sc, el, ec, isGenerated));
 
         var routeTemplate = ExtractRouteTemplate((INamedTypeSymbol)method.ContainingType, method);
         if (routeTemplate != null)
@@ -63,6 +67,12 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                     Provenance = Provenance.FrameworkDerived,
                     SnapshotId = snapshotId,
                     ExtractorVersion = Version,
+                    SourceDocumentPath = path,
+                    SourceStartLine = sl,
+                    SourceStartColumn = sc,
+                    SourceEndLine = el,
+                    SourceEndColumn = ec,
+                    IsCrossGenerated = isGenerated,
                 });
         }
 
@@ -73,7 +83,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             {
                 var retKey = (methodId, returnTypeId, EdgeKind.Returns.ToString());
                 if (seen.Add(retKey))
-                    edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(), snapshotId, assemblyIdentity));
+                    edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(), snapshotId, path, sl, sc, el, ec, isGenerated));
             }
         }
 
@@ -89,7 +99,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
             var refKey = (methodId, paramTypeId, EdgeKind.References.ToString());
             if (seen.Add(refKey))
-                edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(), snapshotId, assemblyIdentity));
+                edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(), snapshotId, path, sl, sc, el, ec, isGenerated));
         }
     }
 
@@ -140,10 +150,9 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         return SymbolIdFactory.Make(symbol, assemblyIdentity);
     }
 
-    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, string snapshotId, string assemblyIdentity)
+    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, string snapshotId,
+        string? path, int? sl, int? sc, int? el, int? ec, bool isGenerated)
     {
-        ArgumentNullException.ThrowIfNull(assemblyIdentity);
-
         return new EdgeRecord
         {
             SourceSymbolId = sourceId,
@@ -152,6 +161,12 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             Provenance = Provenance.FrameworkDerived,
             SnapshotId = snapshotId,
             ExtractorVersion = "aspnetcore-v1",
+            SourceDocumentPath = path,
+            SourceStartLine = sl,
+            SourceStartColumn = sc,
+            SourceEndLine = el,
+            SourceEndColumn = ec,
+            IsCrossGenerated = isGenerated,
         };
     }
 

@@ -18,9 +18,15 @@ public sealed class TestAdapter : IFrameworkAdapter
         List<EdgeRecord> Edges,
         string TestMethodId,
         string SnapshotId,
-        HashSet<string> ReferencedSymbols);
+        HashSet<string> ReferencedSymbols,
+        string? TestDocumentPath,
+        int? TestStartLine,
+        int? TestStartColumn,
+        int? TestEndLine,
+        int? TestEndColumn,
+        bool TestIsCrossGenerated);
 
-    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId)
+    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
     {
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
@@ -46,6 +52,10 @@ public sealed class TestAdapter : IFrameworkAdapter
                 if (testMethodId == null)
                     continue;
 
+                // Resolve the evidence site: the test method declaration
+                var (path, sl, sc, el, ec) = locationResolver.Resolve(method);
+                var isGenerated = locationResolver.IsGenerated(path);
+
                 foreach (var syntaxRef in method.DeclaringSyntaxReferences)
                 {
                     if (syntaxRef.GetSyntax() is not MethodDeclarationSyntax methodSyntax)
@@ -57,7 +67,8 @@ public sealed class TestAdapter : IFrameworkAdapter
 
                     var semanticModel = GetOrCreateSemanticModel(methodSyntax.SyntaxTree, semanticModelCache, compilation);
                     var referencedSymbols = new HashSet<string>();
-                    var context = new ExtractionContext(assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols);
+                    var context = new ExtractionContext(assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols,
+                        path, sl, sc, el, ec, isGenerated);
 
                     CollectTestReferences(bodySyntax, semanticModel, context);
                 }
@@ -146,6 +157,12 @@ public sealed class TestAdapter : IFrameworkAdapter
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = context.SnapshotId,
                 ExtractorVersion = "test-v1",
+                SourceDocumentPath = context.TestDocumentPath,
+                SourceStartLine = context.TestStartLine,
+                SourceStartColumn = context.TestStartColumn,
+                SourceEndLine = context.TestEndLine,
+                SourceEndColumn = context.TestEndColumn,
+                IsCrossGenerated = context.TestIsCrossGenerated,
             });
         }
     }

@@ -17,7 +17,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         string SnapshotId,
         string ExtractorVersion,
         List<EdgeRecord> Edges,
-        HashSet<(string source, string target, string kind)> Seen
+        HashSet<(string source, string target, string kind)> Seen,
+        EdgeLocationResolver LocationResolver
     );
 
     private static readonly HashSet<string> _conventionMethodNames =
@@ -26,7 +27,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         "AsMatchingInterface", "UsingRegistrationStrategy", "AddAssemblyTypes",
     ];
 
-    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId)
+    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
     {
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
@@ -36,7 +37,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             SnapshotId: snapshotId,
             ExtractorVersion: ExtractorConstants.DependencyInjectionExtractor,
             Edges: edges,
-            Seen: seen
+            Seen: seen,
+            LocationResolver: locationResolver
         );
 
         var serviceCollectionType = compilation.GetTypeByMetadataName("Microsoft.Extensions.DependencyInjection.IServiceCollection");
@@ -101,6 +103,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var key = (sourceId, implTypeId, EdgeKind.Registers.ToString());
         if (ctx.Seen.Add(key))
         {
+            var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
+
             ctx.Edges.Add(new EdgeRecord
             {
                 SourceSymbolId = sourceId,
@@ -109,6 +113,12 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = ctx.ExtractorVersion,
+                SourceDocumentPath = path,
+                SourceStartLine = sl,
+                SourceStartColumn = sc,
+                SourceEndLine = el,
+                SourceEndColumn = ec,
+                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
             });
         }
     }
@@ -169,6 +179,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var key = (sourceId, targetId, EdgeKind.Registers.ToString());
         if (ctx.Seen.Add(key))
         {
+            var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
+
             ctx.Edges.Add(new EdgeRecord
             {
                 SourceSymbolId = sourceId,
@@ -177,6 +189,12 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 Provenance = Provenance.Convention,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = ctx.ExtractorVersion,
+                SourceDocumentPath = path,
+                SourceStartLine = sl,
+                SourceStartColumn = sc,
+                SourceEndLine = el,
+                SourceEndColumn = ec,
+                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
             });
         }
     }
@@ -275,6 +293,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
         if (ctx.Seen.Add(key))
         {
+            var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
+
             ctx.Edges.Add(new EdgeRecord
             {
                 SourceSymbolId = sourceId,
@@ -283,6 +303,12 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 Provenance = Provenance.RuntimeUnknown,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = ctx.ExtractorVersion,
+                SourceDocumentPath = path,
+                SourceStartLine = sl,
+                SourceStartColumn = sc,
+                SourceEndLine = el,
+                SourceEndColumn = ec,
+                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
             });
         }
     }

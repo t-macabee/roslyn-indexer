@@ -80,6 +80,13 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
 
     private void CollectMemberReferenceEdges(ISymbol member, string sourceSymbolId, List<EdgeRecord> edges)
     {
+        // Compiler-synthesized backing fields (auto-properties, record positional
+        // properties) share their declaring syntax location with the property that
+        // owns them — counting both produces exact-duplicate edges at the same
+        // source location for one logical fact.
+        if (member is IFieldSymbol { IsImplicitlyDeclared: true })
+            return;
+
         ITypeSymbol? referencedType = member switch
         {
             IMethodSymbol method => method.ReturnType,

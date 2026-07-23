@@ -188,9 +188,11 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         {
             // Compute per-project scope: changed paths that belong to this project's compilation
             HashSet<string>? scopeDocs = null;
+            HashSet<string>? scopeRelPaths = null; // relative-path version for adapter-edge filtering
             if (changedPaths.Count > 0)
             {
                 scopeDocs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                scopeRelPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var syntaxTree in compilation.SyntaxTrees)
                 {
                     var filePath = syntaxTree.FilePath;
@@ -198,10 +200,16 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
                         continue;
                     var relPath = DocumentChangeDetector.GetRelativePath(filePath, _gitRoot);
                     if (changedPaths.Contains(relPath))
+                    {
                         scopeDocs.Add(filePath.Replace('\\', '/'));
+                        scopeRelPaths.Add(relPath);
+                    }
                 }
                 if (scopeDocs.Count == 0)
-                    scopeDocs = null; // null means "no filter" — more efficient than empty set checks
+                {
+                    scopeDocs = null;
+                    scopeRelPaths = null;
+                }
             }
 
             Console.Write($"  [{projectName}] ");
@@ -209,6 +217,17 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
                 logWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
                 logError: msg => Console.Error.Write($"  ERROR: {msg} "),
                 scopeDocuments: scopeDocs);
+
+            // Filter out edges anchored in unchanged documents within this project.
+            // Those edges were already copied forward from the previous snapshot
+            // and must not be written a second time.
+            // Null-path edges (e.g. implicit constructors) cannot be scoped to a
+            // document, so they pass through unfiltered.
+            if (scopeRelPaths != null)
+            {
+                result.Edges.RemoveAll(e =>
+                    e.SourceDocumentPath != null && !scopeRelPaths.Contains(e.SourceDocumentPath));
+            }
 
             _store.SaveDeclarations(newSnapshotIdStr, result.Declarations);
             totalDecl += result.Declarations.Count;

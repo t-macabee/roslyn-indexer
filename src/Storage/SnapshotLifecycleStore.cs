@@ -209,6 +209,8 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             });
         }
 
+        var projects = LoadProjects(snapshotId);
+
         return new SnapshotRow
         {
             SnapshotId = snapshotId,
@@ -224,7 +226,60 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             ExtractorVersion = extractorVersion ?? "",
             ToolVersion = toolVersion ?? "",
             PreviousSnapshotId = previousSnapshotId,
+            Projects = projects,
         };
+    }
+
+    private List<ProjectRow> LoadProjects(string snapshotId)
+    {
+        var projects = new List<ProjectRow>();
+        var referencesByProjectId = new Dictionary<long, List<string>>();
+
+        using var refCommand = _connection.CreateCommand();
+        refCommand.CommandText = @"
+            SELECT pr.project_id, pr.referenced_project_name
+            FROM project_references pr
+            JOIN projects p ON p.project_id = pr.project_id
+            WHERE p.snapshot_id = @snapshotId;
+        ";
+        refCommand.Parameters.AddWithValue("@snapshotId", snapshotId);
+        using (var refReader = refCommand.ExecuteReader())
+        {
+            while (refReader.Read())
+            {
+                var projectId = refReader.GetInt64(0);
+                var referencedName = refReader.GetString(1);
+                if (!referencesByProjectId.TryGetValue(projectId, out var refs))
+                {
+                    refs = [];
+                    referencesByProjectId[projectId] = refs;
+                }
+                refs.Add(referencedName);
+            }
+        }
+
+        using var projectCommand = _connection.CreateCommand();
+        projectCommand.CommandText = @"
+            SELECT project_id, name, target_framework
+            FROM projects
+            WHERE snapshot_id = @snapshotId;
+        ";
+        projectCommand.Parameters.AddWithValue("@snapshotId", snapshotId);
+        using (var projectReader = projectCommand.ExecuteReader())
+        {
+            while (projectReader.Read())
+            {
+                var projectId = projectReader.GetInt64(0);
+                projects.Add(new ProjectRow
+                {
+                    Name = projectReader.GetString(1),
+                    TargetFramework = projectReader.IsDBNull(2) ? "" : projectReader.GetString(2),
+                    References = referencesByProjectId.TryGetValue(projectId, out var refs) ? refs : [],
+                });
+            }
+        }
+
+        return projects;
     }
 
     internal string? GetLatestSnapshotId(string? workspaceId = null)

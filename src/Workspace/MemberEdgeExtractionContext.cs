@@ -7,12 +7,11 @@ namespace Lurp.Workspace;
 
 internal sealed class MemberEdgeExtractionContext(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
 {
-    private readonly IReadOnlyDictionary<DocumentId, DocumentVersionId> _documentVersions = documentVersions ?? throw new ArgumentNullException(nameof(documentVersions));
-    private readonly IReadOnlySet<DocumentId> _generatedDocuments = generatedDocuments ?? throw new ArgumentNullException(nameof(generatedDocuments));
-    private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
     private readonly string _assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
+    private readonly EdgeLocationResolver _locationResolver = new(documentVersions, generatedDocuments, gitRoot);
 
     internal Compilation Compilation { get; } = compilation ?? throw new ArgumentNullException(nameof(compilation));
+    internal EdgeLocationResolver LocationResolver => _locationResolver;
     internal string SnapshotId { get; } = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
     internal IReadOnlySet<string>? ScopeDocuments { get; } = scopeDocuments;
 
@@ -137,72 +136,22 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
     }
 
     private bool IsGeneratedDocument(string? documentPath)
-    {
-        if (string.IsNullOrEmpty(documentPath))
-            return false;
-
-        var docId = new DocumentId(documentPath);
-        if (_generatedDocuments.Contains(docId))
-            return true;
-
-        var normalized = documentPath.Replace('\\', '/');
-
-        if (normalized.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalized.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalized.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (normalized.Contains("/obj/", StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains("/generated/", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
-    }
+        => _locationResolver.IsGenerated(documentPath);
 
     internal (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)?
         GetMemberSourceLocation(ISymbol member)
     {
-        var syntaxRef = member.DeclaringSyntaxReferences.FirstOrDefault();
-        if (syntaxRef == null)
+        var result = _locationResolver.Resolve(member);
+        if (result.path == null && result.sl == null)
             return null;
-
-        return GetLocationInfo(syntaxRef.GetSyntax().GetLocation());
+        return result;
     }
 
     internal (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)
         GetLocationInfo(Location location)
-    {
-        if (location == null || !location.IsInSource)
-            return (null, null, null, null, null);
+        => _locationResolver.Resolve(location);
 
-        var lineSpan = location.GetLineSpan();
-        var path = ResolveDocumentPath(location.SourceTree);
-        return (path, lineSpan.StartLinePosition.Line, lineSpan.StartLinePosition.Character, lineSpan.EndLinePosition.Line, lineSpan.EndLinePosition.Character);
-    }
 
-    private string? ResolveDocumentPath(SyntaxTree? syntaxTree)
-    {
-        if (syntaxTree == null)
-            return null;
-
-        var filePath = syntaxTree.FilePath;
-        if (string.IsNullOrEmpty(filePath))
-            return null;
-
-        var normalized = filePath.Replace('\\', '/');
-
-        foreach (var docId in _documentVersions.Keys)
-        {
-            var docPath = docId.ToString().Replace('\\', '/');
-            if (docPath == normalized || docPath.EndsWith("/" + normalized, StringComparison.Ordinal) ||
-                normalized.EndsWith("/" + docPath, StringComparison.Ordinal))
-            {
-                return docPath;
-            }
-        }
-
-        return DocumentChangeDetector.GetRelativePath(filePath, _gitRoot);
-    }
 
     internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree, Dictionary<SyntaxTree, SemanticModel> cache)
     {

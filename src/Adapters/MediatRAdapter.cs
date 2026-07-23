@@ -10,7 +10,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
     public string Name => "MediatR";
     public string Version => "mediatr-v1";
 
-    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId)
+    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
     {
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
@@ -25,7 +25,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         var handlerTypes = CollectHandlerTypes(allTypes);
 
         foreach (var (handlerType, requestType) in handlerTypes)
-            EmitHandlesEdge(handlerType, requestType, assemblyIdentity, snapshotId, edges, seen);
+            EmitHandlesEdge(handlerType, requestType, assemblyIdentity, snapshotId, edges, seen, locationResolver);
 
         return edges;
     }
@@ -64,7 +64,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
     }
 
     private static void EmitHandlesEdge(INamedTypeSymbol handlerType, INamedTypeSymbol requestType, string assemblyIdentity, string snapshotId,
-        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
     {
         var requestId = MakeSymbolId(requestType, assemblyIdentity);
         if (requestId == null)
@@ -84,6 +84,8 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         var key = (requestId, handleMethodId, EdgeKind.Handles.ToString());
         if (seen.Add(key))
         {
+            var (path, sl, sc, el, ec) = locationResolver.Resolve(handleMethod);
+
             edges.Add(new EdgeRecord
             {
                 SourceSymbolId = requestId,
@@ -92,6 +94,12 @@ public sealed class MediatRAdapter : IFrameworkAdapter
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = snapshotId,
                 ExtractorVersion = "mediatr-v1",
+                SourceDocumentPath = path,
+                SourceStartLine = sl,
+                SourceStartColumn = sc,
+                SourceEndLine = el,
+                SourceEndColumn = ec,
+                IsCrossGenerated = locationResolver.IsGenerated(path),
             });
         }
     }
