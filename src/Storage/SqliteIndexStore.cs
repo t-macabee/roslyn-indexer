@@ -10,6 +10,7 @@ namespace Lurp.Storage
     {
         private readonly string _dbPath;
         private SqliteConnection? _connection;
+        private bool _disposed;
 
         private SnapshotLifecycleStore? _lifecycle;
         private SnapshotDocumentStore? _documents;
@@ -37,7 +38,7 @@ namespace Lurp.Storage
             if (_connection != null)
                 return;
 
-            _connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            _connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Pooling=False");
             _connection.Open();
 
             _lifecycle = new SnapshotLifecycleStore(_connection);
@@ -55,6 +56,10 @@ namespace Lurp.Storage
 
         public void Close()
         {
+            if (_disposed)
+                return;
+            _disposed = true;
+
             if (_connection == null)
                 return;
 

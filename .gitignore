@@ -12,7 +12,7 @@ obj/
 opencode.json
 REMEDIATION_TASKS.md
 CLAUDE.md
-PHASE4_PROGRESS.md
+QWEN.md
 
 # User-specific files
 *.rsuser

@@ -31,6 +31,16 @@ jobs:
           --collect:"XPlat Code Coverage"
           --results-directory ./TestResults
 
+      - name: Flake guard (storage suite × 20)
+        # Runs the storage suite 20 times and fails the build on ANY single failure.
+        # Catches teardown/lifecycle races that appear intermittently (~1 in 15–30 runs).
+        shell: pwsh
+        run: |
+          for ($i = 1; $i -le 20; $i++) {
+            dotnet test tests/Lurp.Storage.Tests.csproj --no-build --configuration Release --nologo
+            if ($LASTEXITCODE -ne 0) { Write-Error "Flake detected on run $i"; exit 1 }
+          }
+
       - name: Run clean-rebuild equivalence test
         # This test loads MSBuildWorkspace and exercises the real incremental/full
         # indexing paths end-to-end. A failure here blocks the merge.
