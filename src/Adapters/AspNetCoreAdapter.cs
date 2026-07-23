@@ -137,12 +137,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
     private static string? MakeSymbolId(ISymbol symbol, string assemblyIdentity)
     {
-        var docCommentId = symbol.GetDocumentationCommentId();
-
-        if (string.IsNullOrEmpty(docCommentId))
-            return null;
-
-        return $"{docCommentId}|{assemblyIdentity}";
+        return SymbolIdFactory.Make(symbol, assemblyIdentity);
     }
 
     private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, string snapshotId, string assemblyIdentity)

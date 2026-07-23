@@ -8,12 +8,13 @@ internal sealed class ReflectionExtractionContext
     private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = [];
     private readonly string _gitRoot;
 
-    internal ReflectionExtractionContext(Compilation compilation, string snapshotId, string gitRoot)
+    internal ReflectionExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
     {
         Compilation = compilation;
         SnapshotId = snapshotId;
         _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
         AssemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
+        ScopeDocuments = scopeDocuments;
 
         KnownTypeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         KnownMemberNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -23,6 +24,7 @@ internal sealed class ReflectionExtractionContext
     internal Compilation Compilation { get; }
     internal string SnapshotId { get; }
     internal string AssemblyIdentity { get; }
+    internal IReadOnlySet<string>? ScopeDocuments { get; }
     internal HashSet<string> KnownTypeNames { get; }
     internal HashSet<string> KnownMemberNames { get; }
 
@@ -38,10 +40,7 @@ internal sealed class ReflectionExtractionContext
 
     internal string? MakeSymbolId(ISymbol symbol)
     {
-        var docCommentId = symbol.GetDocumentationCommentId();
-        if (string.IsNullOrEmpty(docCommentId))
-            return null;
-        return $"{docCommentId}|{AssemblyIdentity}";
+        return SymbolIdFactory.Make(symbol, AssemblyIdentity);
     }
 
     internal string? GetContainingMemberSymbolId(SyntaxNode node, SemanticModel semanticModel)

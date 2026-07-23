@@ -33,16 +33,20 @@ public sealed class PolymorphismExtractor
 {
     private readonly PolymorphismExtractionContext _context;
 
-    public PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot)
+    public PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
-        _context = new PolymorphismExtractionContext(compilation, snapshotId, gitRoot);
+        _context = new PolymorphismExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments);
     }
 
     public List<EdgeRecord> ExtractAll()
     {
         var allTypes = PolymorphismExtractionContext.GetAllNamedTypes(_context.Compilation.Assembly.GlobalNamespace);
+
+        // Filter to types declared in scope documents when the scope is set
+        if (_context.ScopeDocuments != null)
+            allTypes = allTypes.Where(t => _context.IsTypeInScope(t)).ToList();
 
         var edges = new List<EdgeRecord>();
         edges.AddRange(new InterfaceDispatchExtractor(_context).Extract(allTypes));

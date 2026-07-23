@@ -9,17 +9,19 @@ internal sealed class PolymorphismExtractionContext
     private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = [];
     private readonly string _gitRoot;
 
-    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot)
+    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
     {
         Compilation = compilation;
         SnapshotId = snapshotId;
         _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
         AssemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
+        ScopeDocuments = scopeDocuments;
     }
 
     internal Compilation Compilation { get; }
     internal string SnapshotId { get; }
     internal string AssemblyIdentity { get; }
+    internal IReadOnlySet<string>? ScopeDocuments { get; }
 
     internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree)
     {
@@ -33,10 +35,7 @@ internal sealed class PolymorphismExtractionContext
 
     internal string? MakeSymbolId(ISymbol symbol)
     {
-        var docCommentId = symbol.GetDocumentationCommentId();
-        if (string.IsNullOrEmpty(docCommentId))
-            return null;
-        return $"{docCommentId}|{AssemblyIdentity}";
+        return SymbolIdFactory.Make(symbol, AssemblyIdentity);
     }
 
     internal EdgeRecord MakeMayDispatchEdge(string sourceId, string targetId, ISymbol targetSymbol, string provenance)
@@ -118,6 +117,19 @@ internal sealed class PolymorphismExtractionContext
                 lineSpan.StartLinePosition.Character,
                 lineSpan.EndLinePosition.Line,
                 lineSpan.EndLinePosition.Character);
+    }
+
+    internal bool IsTypeInScope(INamedTypeSymbol typeSymbol)
+    {
+        if (ScopeDocuments == null)
+            return true;
+        foreach (var syntaxRef in typeSymbol.DeclaringSyntaxReferences)
+        {
+            var filePath = syntaxRef.SyntaxTree?.FilePath;
+            if (filePath != null && ScopeDocuments.Contains(filePath.Replace('\\', '/')))
+                return true;
+        }
+        return false;
     }
 
     internal static List<INamedTypeSymbol> GetAllNamedTypes(INamespaceSymbol ns)

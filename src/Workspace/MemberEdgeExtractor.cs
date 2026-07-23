@@ -7,9 +7,9 @@ public sealed class MemberEdgeExtractor
 {
     private readonly List<IMemberEdgeExtractor> _extractors;
 
-    public MemberEdgeExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot)
+    public MemberEdgeExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
     {
-        var context = new MemberEdgeExtractionContext(compilation, documentVersions, generatedDocuments, snapshotId, gitRoot);
+        var context = new MemberEdgeExtractionContext(compilation, documentVersions, generatedDocuments, snapshotId, gitRoot, scopeDocuments);
 
         _extractors =
         [

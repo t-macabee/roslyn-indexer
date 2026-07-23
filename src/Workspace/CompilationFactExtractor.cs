@@ -8,9 +8,9 @@ public static class CompilationFactExtractor
 {
     public sealed record ExtractionResult(List<SymbolDeclaration> Declarations, List<EdgeRecord> Edges, List<DiagnosticRecord> Diagnostics, int SkippedDeclarations = 0);
 
-    public static ExtractionResult ExtractAll(Compilation compilation, WorkspaceInfo workspaceInfo, string snapshotId, string projectName, IReadOnlySet<string>? skipAdapters = null, Action<string>? logWarning = null, Action<string>? logError = null)
+    public static ExtractionResult ExtractAll(Compilation compilation, WorkspaceInfo workspaceInfo, string snapshotId, string projectName, IReadOnlySet<string>? skipAdapters = null, Action<string>? logWarning = null, Action<string>? logError = null, IReadOnlySet<string>? scopeDocuments = null)
     {
-        var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, logWarning);
+        var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, logWarning, scopeDocuments);
 
         List<SymbolDeclaration> declarations;
         int skippedDeclarations = 0;
@@ -40,7 +40,7 @@ public static class CompilationFactExtractor
 
         var gitRoot = workspaceInfo.Id.GitRoot;
 
-        var memberEdgeExtractor = new MemberEdgeExtractor(compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, gitRoot);
+        var memberEdgeExtractor = new MemberEdgeExtractor(compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, gitRoot, scopeDocuments);
 
         try
         {
@@ -52,13 +52,13 @@ public static class CompilationFactExtractor
         }
 
 
-        var polyExtractor = new PolymorphismExtractor(compilation, snapshotId, gitRoot);
+        var polyExtractor = new PolymorphismExtractor(compilation, snapshotId, gitRoot, scopeDocuments);
 
         edges.AddRange(polyExtractor.ExtractAll());
 
         try
         {
-            var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId, gitRoot);
+            var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId, gitRoot, scopeDocuments);
             edges.AddRange(reflectionExtractor.Extract());
         }
         catch (Exception ex)

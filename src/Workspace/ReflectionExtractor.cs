@@ -7,11 +7,11 @@ public sealed class ReflectionExtractor
 {
     private readonly ReflectionExtractionContext _context;
 
-    public ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot)
+    public ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
-        _context = new ReflectionExtractionContext(compilation, snapshotId, gitRoot);
+        _context = new ReflectionExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments);
     }
 
     public List<EdgeRecord> Extract()
@@ -25,6 +25,14 @@ public sealed class ReflectionExtractor
 
         foreach (var syntaxTree in _context.Compilation.SyntaxTrees)
         {
+            // Skip syntax trees not in scope (when scoping is active)
+            if (_context.ScopeDocuments != null)
+            {
+                var filePath = syntaxTree.FilePath;
+                if (string.IsNullOrEmpty(filePath) || !_context.ScopeDocuments.Contains(filePath.Replace('\\', '/')))
+                    continue;
+            }
+
             var semanticModel = _context.GetOrCreateSemanticModel(syntaxTree);
             var root = syntaxTree.GetRoot();
 

@@ -503,6 +503,132 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
             """);
     }
 
+    // T16a: Regression test for CrossDocumentEdgeRefresher — verifies that
+    // when a symbol in ProjectA changes, documents in ProjectB that reference
+    // the changed symbol through cross-project edges have their edges
+    // correctly re-extracted during incremental indexing. Without the
+    // CrossDocumentEdgeRefresher, edges sourced from ProjectB documents
+    // that point at changed ProjectA symbols would be stale (copied forward
+    // from the previous snapshot with no re-extraction), and the incremental
+    // snapshot would silently diverge from a full rebuild.
+    [Fact]
+    public async Task IncrementalIndex_Matches_FullRebuild_WhenDependentProjectReferencesChangedSymbol()
+    {
+
+        if (!MSBuildLocator.IsRegistered)
+        {
+            throw new SkipException("MSBuild is not available on this system. Cannot run integration test.");
+        }
+
+        CreateCrossProjectDependentTestSolution();
+
+        var snapshotA = await RunFullIndexAsync("Index A (full initial, cross-project)");
+
+        ModifyLibraryFile();
+
+        var snapshotB = await RunIncrementalIndexAsync("Index B (incremental, Library changed)");
+
+        var snapshotC = await RunFullIndexAsync("Index C (full after Library change)", deleteFirst: false);
+
+        CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
+    }
+
+    private void CreateCrossProjectDependentTestSolution()
+    {
+        // ProjectA: Library — defines Widget (the type that will change)
+        var libDir = Path.Combine(_testDir, "src", "Library");
+        Directory.CreateDirectory(libDir);
+
+        File.WriteAllText(Path.Combine(libDir, "Library.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>");
+
+        File.WriteAllText(Path.Combine(libDir, "Widget.cs"), """
+            namespace Library;
+
+            public class Widget
+            {
+                public string Name { get; set; } = "";
+
+                public string GetLabel()
+                {
+                    return Name;
+                }
+            }
+            """);
+
+        // ProjectB: App — references Library and uses Widget
+        var appDir = Path.Combine(_testDir, "src", "App");
+        Directory.CreateDirectory(appDir);
+
+        File.WriteAllText(Path.Combine(appDir, "App.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include=""..\Library\Library.csproj"" />
+  </ItemGroup>
+</Project>");
+
+        File.WriteAllText(Path.Combine(appDir, "Calculator.cs"), """
+            namespace App;
+
+            public class Calculator
+            {
+                private readonly Library.Widget _widget;
+
+                public Calculator(Library.Widget widget)
+                {
+                    _widget = widget;
+                }
+
+                public string GetWidgetName()
+                {
+                    return _widget.GetLabel();
+                }
+            }
+            """);
+
+        File.WriteAllText(_solutionPath, $"""
+            <Solution>
+              <Folder Name="/src/">
+                <Project Path="src/Library/Library.csproj" />
+                <Project Path="src/App/App.csproj" />
+              </Folder>
+            </Solution>
+            """);
+    }
+
+    private void ModifyLibraryFile()
+    {
+        var widgetPath = Path.Combine(_testDir, "src", "Library", "Widget.cs");
+        File.WriteAllText(widgetPath, """
+            namespace Library;
+
+            public class Widget
+            {
+                public string Name { get; set; } = "";
+
+                public string GetLabel()
+                {
+                    return Name;
+                }
+
+                // Added method — forces the Library document to change
+                public int GetNameLength()
+                {
+                    return Name.Length;
+                }
+            }
+            """);
+    }
+
     private static void NormalizeEdges(List<EdgeRecord> edges)
     {
         // Normalize snapshot ID so edges from different snapshots can be compared.

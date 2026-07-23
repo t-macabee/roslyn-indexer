@@ -7,7 +7,8 @@ internal sealed class SymbolExtractionContext(
     IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
     IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
     IReadOnlySet<DocumentId> generatedDocuments,
-    string snapshotId)
+    string snapshotId,
+    IReadOnlySet<string>? scopeDocuments = null)
 {
     internal Compilation Compilation { get; } = compilation;
     internal IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> DocumentContents { get; } = documentContents;
@@ -15,6 +16,17 @@ internal sealed class SymbolExtractionContext(
     internal IReadOnlySet<DocumentId> GeneratedDocuments { get; } = generatedDocuments;
     internal string AssemblyIdentity { get; } = compilation.Assembly.Identity.GetDisplayName();
     internal string SnapshotId { get; } = snapshotId;
+    internal IReadOnlySet<string>? ScopeDocuments { get; } = scopeDocuments;
+
+    internal bool IsInScope(SyntaxTree? syntaxTree)
+    {
+        if (ScopeDocuments == null || syntaxTree == null)
+            return true;
+        var filePath = syntaxTree.FilePath;
+        if (string.IsNullOrEmpty(filePath))
+            return true;
+        return ScopeDocuments.Contains(filePath.Replace('\\', '/'));
+    }
 
     internal DocumentId? ResolveDocumentId(SyntaxTree syntaxTree)
     {

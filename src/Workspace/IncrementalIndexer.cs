@@ -80,14 +80,14 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         {
             // Step 5: Stale-Data Removal
             var sw5 = System.Diagnostics.Stopwatch.StartNew();
-            PrepareSnapshotData(solution, previousSnapshotId, newSnapshotIdStr, affectedProjects, affectedCompilations, oldDocVersionIdSet);
+            PrepareSnapshotData(solution, previousSnapshotId, newSnapshotIdStr, affectedProjects, oldDocVersionIdSet, changedPaths);
             sw5.Stop();
             timings.Add(new SnapshotTimingRow("stale_data_removal", sw5.ElapsedMilliseconds, DateTime.UtcNow));
 
             // Step 6: Re-extraction
             var sw6 = System.Diagnostics.Stopwatch.StartNew();
             (totalDeclarations, totalEdges, totalDiagnostics) =
-                ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations);
+                ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations, changedPaths);
             sw6.Stop();
             timings.Add(new SnapshotTimingRow("re_extraction", sw6.ElapsedMilliseconds, DateTime.UtcNow));
 
@@ -135,31 +135,30 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         return result;
     }
 
-    private void PrepareSnapshotData(Solution solution, string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, Dictionary<string, Compilation> affectedCompilations, HashSet<string> oldDocVersionIdSet)
+    private void PrepareSnapshotData(Solution solution, string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> oldDocVersionIdSet, HashSet<string> changedPaths)
     {
         Console.Write("Preparing snapshot data (copy forward, remove stale)... ");
 
         _store.CopyEdgesToSnapshot(previousSnapshotId, newSnapshotIdStr);
         _store.CopySnapshotDiagnostics(previousSnapshotId, newSnapshotIdStr);
 
-        var affectedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var project in solution.Projects)
+        // Only delete edges for the changed documents, not the entire affected project.
+        // We now scope re-extraction to changed documents only, so unchanged documents
+        // within affected projects keep their copied-forward edges intact.
+        if (changedPaths.Count > 0)
+            _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, changedPaths);
+
+        // Null-path edges (from symbols with no DeclaringSyntaxReferences, e.g. an
+        // implicit default constructor) can't be scoped to a document by path, so we
+        // scope the delete to symbols declared in the documents that actually changed
+        // rather than the whole affected assembly — re-extraction is scoped the same
+        // way, so an unchanged document elsewhere in the assembly must keep its
+        // copied-forward null-path edges intact.
+        if (oldDocVersionIdSet.Count > 0)
         {
-            if (!affectedProjects.Contains(project.Name))
-                continue;
-            foreach (var doc in project.Documents)
-            {
-                if (doc.FilePath == null) continue;
-                affectedProjectPaths.Add(DocumentChangeDetector.GetRelativePath(doc.FilePath, _gitRoot));
-            }
+            var changedSymbolIds = _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, oldDocVersionIdSet);
+            _store.DeleteEdgesWithNullDocumentPathForSymbols(newSnapshotIdStr, changedSymbolIds);
         }
-
-        if (affectedProjectPaths.Count > 0)
-            _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, affectedProjectPaths);
-
-        var affectedAssemblyIdentities = affectedCompilations.Values
-            .Select(c => c.Assembly.Identity.GetDisplayName()).ToList();
-        _store.DeleteEdgesWithNullDocumentPathForAssemblies(newSnapshotIdStr, affectedAssemblyIdentities);
 
         if (oldDocVersionIdSet.Count > 0)
             _store.DeleteDeclarationsByDocumentVersionIds(oldDocVersionIdSet);
@@ -171,17 +170,36 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
     }
 
     private (int Declarations, int Edges, int Diagnostics) ExtractReplacementFacts(
-        WorkspaceInfo workspaceInfo, string newSnapshotIdStr, Dictionary<string, Compilation> affectedCompilations)
+        WorkspaceInfo workspaceInfo, string newSnapshotIdStr, Dictionary<string, Compilation> affectedCompilations, HashSet<string> changedPaths)
     {
         Console.WriteLine("Extracting replacement facts for affected projects...");
         int totalDecl = 0, totalEdge = 0, totalDiag = 0;
 
         foreach (var (projectName, compilation) in affectedCompilations)
         {
+            // Compute per-project scope: changed paths that belong to this project's compilation
+            HashSet<string>? scopeDocs = null;
+            if (changedPaths.Count > 0)
+            {
+                scopeDocs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var syntaxTree in compilation.SyntaxTrees)
+                {
+                    var filePath = syntaxTree.FilePath;
+                    if (string.IsNullOrEmpty(filePath))
+                        continue;
+                    var relPath = DocumentChangeDetector.GetRelativePath(filePath, _gitRoot);
+                    if (changedPaths.Contains(relPath))
+                        scopeDocs.Add(filePath.Replace('\\', '/'));
+                }
+                if (scopeDocs.Count == 0)
+                    scopeDocs = null; // null means "no filter" — more efficient than empty set checks
+            }
+
             Console.Write($"  [{projectName}] ");
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, _skipAdapters,
                 logWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
-                logError: msg => Console.Error.Write($"  ERROR: {msg} "));
+                logError: msg => Console.Error.Write($"  ERROR: {msg} "),
+                scopeDocuments: scopeDocs);
 
             _store.SaveDeclarations(newSnapshotIdStr, result.Declarations);
             totalDecl += result.Declarations.Count;

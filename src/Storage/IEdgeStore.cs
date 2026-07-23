@@ -23,6 +23,7 @@ namespace Lurp.Storage
 
         void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths);
         void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities);
+        void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds);
         void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId);
 
         void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId);

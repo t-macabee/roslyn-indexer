@@ -187,6 +187,8 @@ namespace Lurp.Storage
             { EnsureOpen(); _edgeStore!.DeleteEdgesByDocumentPaths(snapshotId, documentPaths); }
         public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities)
             { EnsureOpen(); _edgeStore!.DeleteEdgesWithNullDocumentPathForAssemblies(snapshotId, assemblyIdentities); }
+        public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
+            { EnsureOpen(); _edgeStore!.DeleteEdgesWithNullDocumentPathForSymbols(snapshotId, symbolIds); }
         public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId)
             { EnsureOpen(); _edgeStore!.CopyEdgesToSnapshot(fromSnapshotId, toSnapshotId); }
         public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)

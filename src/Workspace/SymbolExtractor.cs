@@ -11,7 +11,8 @@ public sealed class SymbolExtractor
         IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
         IReadOnlySet<DocumentId> generatedDocuments,
         string snapshotId,
-        Action<string>? logWarning = null)
+        Action<string>? logWarning = null,
+        IReadOnlySet<string>? scopeDocuments = null)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (documentContents == null) throw new ArgumentNullException(nameof(documentContents));
@@ -19,7 +20,7 @@ public sealed class SymbolExtractor
         if (generatedDocuments == null) throw new ArgumentNullException(nameof(generatedDocuments));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
 
-        _context = new SymbolExtractionContext(compilation, documentContents, documentVersions, generatedDocuments, snapshotId);
+        _context = new SymbolExtractionContext(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, scopeDocuments);
         _logWarning = logWarning;
     }
 

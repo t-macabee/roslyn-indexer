@@ -18,8 +18,25 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         return edges;
     }
 
+    private bool IsTypeInScope(INamedTypeSymbol typeSymbol)
+    {
+        if (context.ScopeDocuments == null)
+            return true;
+        foreach (var syntaxRef in typeSymbol.DeclaringSyntaxReferences)
+        {
+            if (context.IsInScope(syntaxRef.SyntaxTree))
+                return true;
+        }
+        return false;
+    }
+
     private void CollectTypeEdges(INamedTypeSymbol typeSymbol, List<EdgeRecord> edges)
     {
+        // Skip types not in scope — they'll produce edges with no SourceDocumentPath
+        // and their structural relationships (inherits, implements) are global per compilation anyway.
+        if (!IsTypeInScope(typeSymbol))
+            return;
+
         var sourceId = MakeSymbolId(typeSymbol);
         if (sourceId == null)
             return;
@@ -84,10 +101,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
 
     private string? MakeSymbolId(ITypeSymbol typeSymbol)
     {
-        var docCommentId = typeSymbol.GetDocumentationCommentId();
-        if (string.IsNullOrEmpty(docCommentId))
-            return null;
-        return $"{docCommentId}|{context.AssemblyIdentity}";
+        return SymbolIdFactory.Make(typeSymbol, context.AssemblyIdentity);
     }
 
     private EdgeRecord MakeEdge(string sourceId, string targetId, string kind, ISymbol sourceSymbol)

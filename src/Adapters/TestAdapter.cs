@@ -152,10 +152,7 @@ public sealed class TestAdapter : IFrameworkAdapter
 
     private static string? MakeSymbolId(ISymbol symbol, string assemblyIdentity)
     {
-        var docCommentId = symbol.GetDocumentationCommentId();
-        if (string.IsNullOrEmpty(docCommentId))
-            return null;
-        return $"{docCommentId}|{assemblyIdentity}";
+        return SymbolIdFactory.Make(symbol, assemblyIdentity);
     }
 
     private static SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree,Dictionary<SyntaxTree, SemanticModel> cache,Compilation compilation)

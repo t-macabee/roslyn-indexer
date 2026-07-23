@@ -61,6 +61,9 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
                 var syntaxNode = syntaxRef.GetSyntax();
                 var syntaxTree = syntaxRef.SyntaxTree;
 
+                if (!context.IsInScope(syntaxTree))
+                    continue;
+
                 var documentId = context.ResolveDocumentId(syntaxTree);
                 if (documentId == null)
                     continue;

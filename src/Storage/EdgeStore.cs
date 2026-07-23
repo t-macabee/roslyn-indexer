@@ -263,6 +263,26 @@ public sealed class EdgeStore : IEdgeStore
         command.ExecuteNonQuery();
     }
 
+    public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
+    {
+        var idList = symbolIds as IReadOnlyCollection<string> ?? symbolIds.ToList();
+        if (idList.Count == 0)
+            return;
+
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            DELETE FROM edges
+            WHERE snapshot_id = @snapshotId
+              AND source_document_path IS NULL
+              AND source_symbol_id IN (" + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + @");
+        ";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        int i = 0;
+        foreach (var id in idList)
+            command.Parameters.AddWithValue($"@p{i++}", id);
+        command.ExecuteNonQuery();
+    }
+
     public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId)
     {
         using var command = _connection.CreateCommand();

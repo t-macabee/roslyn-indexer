@@ -23,6 +23,9 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
                 if (member is INamedTypeSymbol)
                     continue;
 
+                if (!context.IsMemberInScope(member))
+                    continue;
+
                 var memberId = context.MakeSymbolId(member);
 
                 if (memberId == null)

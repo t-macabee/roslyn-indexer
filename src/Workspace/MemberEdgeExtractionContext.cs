@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Lurp.Workspace;
 
-internal sealed class MemberEdgeExtractionContext(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot)
+internal sealed class MemberEdgeExtractionContext(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
 {
     private readonly IReadOnlyDictionary<DocumentId, DocumentVersionId> _documentVersions = documentVersions ?? throw new ArgumentNullException(nameof(documentVersions));
     private readonly IReadOnlySet<DocumentId> _generatedDocuments = generatedDocuments ?? throw new ArgumentNullException(nameof(generatedDocuments));
@@ -14,6 +14,47 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
 
     internal Compilation Compilation { get; } = compilation ?? throw new ArgumentNullException(nameof(compilation));
     internal string SnapshotId { get; } = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
+    internal IReadOnlySet<string>? ScopeDocuments { get; } = scopeDocuments;
+
+    private bool IsSyntaxTreeInScope(SyntaxTree? syntaxTree)
+    {
+        if (ScopeDocuments == null || syntaxTree == null)
+            return true;
+        var filePath = syntaxTree.FilePath;
+        if (string.IsNullOrEmpty(filePath))
+            return true;
+        return ScopeDocuments.Contains(filePath.Replace('\\', '/'));
+    }
+
+    internal bool IsMemberInScope(ISymbol member)
+    {
+        if (ScopeDocuments == null)
+            return true;
+
+        var syntaxRefs = member.DeclaringSyntaxReferences;
+        if (syntaxRefs.IsEmpty)
+        {
+            // Compiler-synthesized members (implicit constructors, auto-property
+            // backing fields) have no declaring syntax of their own — fall back to
+            // the containing type's scope.
+            var containingType = member.ContainingType;
+            if (containingType == null)
+                return true;
+            foreach (var syntaxRef in containingType.DeclaringSyntaxReferences)
+            {
+                if (IsSyntaxTreeInScope(syntaxRef.SyntaxTree))
+                    return true;
+            }
+            return false;
+        }
+
+        foreach (var syntaxRef in syntaxRefs)
+        {
+            if (IsSyntaxTreeInScope(syntaxRef.SyntaxTree))
+                return true;
+        }
+        return false;
+    }
 
     internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes() => GetNamespaceTypeMembers(Compilation.Assembly.GlobalNamespace);
 
@@ -38,6 +79,8 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
                 {
                     foreach (var syntaxRef in method.DeclaringSyntaxReferences)
                     {
+                        if (!IsSyntaxTreeInScope(syntaxRef.SyntaxTree))
+                            continue;
                         var syntax = syntaxRef.GetSyntax();
                         if (syntax is MethodDeclarationSyntax methodSyntax)
                             yield return (method, methodSyntax);
@@ -55,6 +98,8 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
 
                         foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
                         {
+                            if (!IsSyntaxTreeInScope(syntaxRef.SyntaxTree))
+                                continue;
                             if (syntaxRef.GetSyntax() is AccessorDeclarationSyntax accessorSyntax)
                                 yield return (accessor, accessorSyntax);
                         }
@@ -66,10 +111,7 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
 
     internal string? MakeSymbolId(ISymbol symbol)
     {
-        var docCommentId = symbol.GetDocumentationCommentId();
-        if (string.IsNullOrEmpty(docCommentId))
-            return null;
-        return $"{docCommentId}|{_assemblyIdentity}";
+        return SymbolIdFactory.Make(symbol, _assemblyIdentity);
     }
 
     internal EdgeRecord MakeEdge(string sourceId, string targetId, string kind, string extractorVersion, (string? path, int? sl, int? sc, int? el, int? ec)? location)

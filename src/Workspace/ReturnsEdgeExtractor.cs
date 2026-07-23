@@ -18,6 +18,9 @@ internal sealed class ReturnsEdgeExtractor(MemberEdgeExtractionContext context) 
                 if (member is not IMethodSymbol method)
                     continue;
 
+                if (!context.IsMemberInScope(method))
+                    continue;
+
                 if (method.ReturnsVoid || method.ReturnType == null)
                     continue;
 
