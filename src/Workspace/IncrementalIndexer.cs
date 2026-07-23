@@ -72,6 +72,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         sw4.Stop();
         timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds, DateTime.UtcNow));
 
+        // Populate extractor registry (idempotent — no-op on re-runs)
+        _store.UpsertExtractors(ExtractorRegistry.All);
+
         int totalDeclarations = 0;
         int totalEdges = 0;
         int totalDiagnostics = 0;

@@ -195,6 +195,8 @@ namespace Lurp.Storage
             { EnsureOpen(); _edgeStore!.CopySnapshotDiagnostics(fromSnapshotId, toSnapshotId); }
         public void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames)
             { EnsureOpen(); _edgeStore!.DeleteDiagnosticsByProjectNames(snapshotId, projectNames); }
+        public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors)
+            { EnsureOpen(); _edgeStore!.UpsertExtractors(extractors); }
 
         // ── ISearchStore ───────────────────────────────────────────────────
 

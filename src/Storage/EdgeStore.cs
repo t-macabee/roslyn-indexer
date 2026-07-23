@@ -416,6 +416,40 @@ public sealed class EdgeStore : IEdgeStore
         return results;
     }
 
+    public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors)
+    {
+        using var transaction = _connection.BeginTransaction();
+        try
+        {
+            using var command = _connection.CreateCommand();
+            command.Transaction = transaction;
+
+            foreach (var (name, version, description) in extractors)
+            {
+                command.CommandText = @"
+                    INSERT INTO extractors (name, version, description)
+                    SELECT @name, @version, @description
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM extractors
+                        WHERE name = @name AND version = @version
+                    );
+                ";
+                command.Parameters.Clear();
+                command.Parameters.AddWithValue("@name", name);
+                command.Parameters.AddWithValue("@version", version);
+                command.Parameters.AddWithValue("@description", (object?)description ?? DBNull.Value);
+                command.ExecuteNonQuery();
+            }
+
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
     private static List<EdgeRecord> ReadEdgeRecords(SqliteCommand command)
     {
         var results = new List<EdgeRecord>();

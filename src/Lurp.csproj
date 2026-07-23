@@ -10,6 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Lurp.Storage.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Remove="Storage\**\*.cs" />
     <ProjectReference Include="Storage\Lurp.Storage.csproj" />
   </ItemGroup>
