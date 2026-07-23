@@ -23,6 +23,8 @@ public class Program
         ["simulate-remove"] = SimulateRemoveHandler.Run,
         ["audit"] = AuditHandler.Run,
         ["timings"] = TimingsHandler.Run,
+        ["annotate"] = AnnotationHandler.RunAnnotate,
+        ["get-annotations"] = AnnotationHandler.RunGetAnnotations,
     };
 
     public static void Main(string[] args)
@@ -55,7 +57,7 @@ public class Program
 
     private static void PrintUnknownModeError()
     {
-        Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=context, --mode=status, --mode=timings, --mode=simulate-rename, --mode=simulate-move, --mode=simulate-remove, or --mode=audit.");
+        Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=context, --mode=status, --mode=timings, --mode=simulate-rename, --mode=simulate-move, --mode=simulate-remove, --mode=audit, --mode=annotate, or --mode=get-annotations.");
         Console.Error.WriteLine("  Note: For --mode=index, use --strategy=<incremental|full> (default: full on first run, incremental on subsequent runs).");
         Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
         Console.Error.WriteLine("  Note: 'structure' is served by --mode=context --intent=inspect.");
@@ -82,6 +84,8 @@ public class Program
         Console.WriteLine("  --mode=simulate-move       Simulate moving a symbol to a new namespace.");
         Console.WriteLine("  --mode=simulate-remove     Simulate removing a symbol and show cascading impact.");
         Console.WriteLine("  --mode=audit               Run static analysis checks on the index.");
+        Console.WriteLine("  --mode=annotate            Attach a user-authored annotation to a symbol.");
+        Console.WriteLine("  --mode=get-annotations     Retrieve annotations for a symbol.");
         Console.WriteLine();
         Console.WriteLine("INDEXING (--mode=index)");
         Console.WriteLine("  Required:");
@@ -122,6 +126,15 @@ public class Program
         Console.WriteLine("    --checks=<list>       Comma-separated checks: dead-symbol, untested-surface,");
         Console.WriteLine("                          unregistered-impl, high-fan-out (default: all).");
         Console.WriteLine("    --fan-out-threshold=N Call-count threshold for high-fan-out (default: 20).");
+        Console.WriteLine("    --snapshot=<id>       Snapshot to use (default: latest).");
+        Console.WriteLine();
+        Console.WriteLine("ANNOTATIONS (--mode=annotate / --mode=get-annotations)");
+        Console.WriteLine("  Required:");
+        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
+        Console.WriteLine("  Options:");
+        Console.WriteLine("    --symbol=<id>         The symbol ID to annotate or query.");
+        Console.WriteLine("    --kind=<kind>         Annotation kind (annotate only, required).");
+        Console.WriteLine("    --value=<text>        Annotation value (annotate only, required).");
         Console.WriteLine("    --snapshot=<id>       Snapshot to use (default: latest).");
         Console.WriteLine();
         Console.WriteLine("STATUS (--mode=status)");

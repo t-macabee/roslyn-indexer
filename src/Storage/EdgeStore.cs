@@ -416,6 +416,20 @@ public sealed class EdgeStore : IEdgeStore
         return results;
     }
 
+    public void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            INSERT INTO annotations (snapshot_id, symbol_id, kind, value)
+            SELECT @toSnapshotId, symbol_id, kind, value
+            FROM annotations
+            WHERE snapshot_id = @fromSnapshotId;
+        ";
+        command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
+        command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+        command.ExecuteNonQuery();
+    }
+
     public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors)
     {
         using var transaction = _connection.BeginTransaction();

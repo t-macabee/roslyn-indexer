@@ -29,6 +29,8 @@ namespace Lurp.Storage
         void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId);
         void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames);
 
+        void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId);
+
         void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors);
     }
 }

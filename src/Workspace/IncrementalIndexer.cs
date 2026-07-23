@@ -148,6 +148,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
 
         _store.CopyEdgesToSnapshot(previousSnapshotId, newSnapshotIdStr);
         _store.CopySnapshotDiagnostics(previousSnapshotId, newSnapshotIdStr);
+        _store.CopyAnnotationsToSnapshot(previousSnapshotId, newSnapshotIdStr);
 
         // Only delete edges for the changed documents, not the entire affected project.
         // We now scope re-extraction to changed documents only, so unchanged documents
