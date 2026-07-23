@@ -95,8 +95,12 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
             // but are no longer present after re-extraction
             PruneRemovedSymbols(previousSnapshotId, newSnapshotIdStr, oldDocVersionIdSet, changedPaths);
 
+            // Compute the set of symbol IDs that need their FTS entries refreshed:
+            // all symbols currently declared in the changed documents after re-extraction.
+            var changedSymbolIds = ComputeChangedSymbolIds(newSnapshotIdStr, changedPaths);
+
             // Step 7: Cross-doc Edge Refresh + Step 8: FTS Rebuild + Diff (in FinalizeSnapshotAsync)
-            totalEdges += await FinalizeSnapshotAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects, timings);
+            totalEdges += await FinalizeSnapshotAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, changedSymbolIds, affectedProjects, timings);
         }
         catch (Exception ex)
         {
@@ -164,6 +168,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
             _store.DeleteDeclarationsByDocumentVersionIds(oldDocVersionIdSet);
 
         _store.CopySnapshotSymbols(previousSnapshotId, newSnapshotIdStr);
+        _store.CopySearchIndexToSnapshot(previousSnapshotId, newSnapshotIdStr);
         _store.DeleteDiagnosticsByProjectNames(newSnapshotIdStr, affectedProjects);
 
         Console.WriteLine("done.");
@@ -248,7 +253,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         }
     }
 
-    private async Task<int> FinalizeSnapshotAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotIdStr, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> affectedProjects, List<SnapshotTimingRow> timings)
+    private async Task<int> FinalizeSnapshotAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotIdStr, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> changedSymbolIds, HashSet<string> affectedProjects, List<SnapshotTimingRow> timings)
     {
         // Step 7: Cross-doc Edge Refresh
         var sw7 = System.Diagnostics.Stopwatch.StartNew();
@@ -259,17 +264,17 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         sw7.Stop();
         timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw7.ElapsedMilliseconds, DateTime.UtcNow));
 
-        // Step 8: FTS Rebuild + Diff
+        // Step 8: FTS Rebuild (incremental) + Diff
         var sw8 = System.Diagnostics.Stopwatch.StartNew();
-        Console.Write("Rebuilding FTS5 search index... ");
-        _store.BuildSearchIndex(newSnapshotIdStr);
+        Console.Write("Rebuilding FTS5 search index (incremental)... ");
+        _store.BuildSearchIndex(newSnapshotIdStr, changedPaths, changedSymbolIds);
         Console.WriteLine("done.");
 
         Console.Write("Computing semantic diff from previous snapshot... ");
         try
         {
             var differ = new SemanticDiffer(_store, _store, _store);
-            var (diffChanges, skippedComparisons) = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr);
+            var (diffChanges, skippedComparisons) = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr, changedPaths, changedSymbolIds);
             _store.SaveSemanticChanges(previousSnapshotId, newSnapshotIdStr, diffChanges);
             Console.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
         }
@@ -282,6 +287,23 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
 
         _store.MarkSnapshotComplete(newSnapshotIdStr);
         return crossDocEdgesProcessed;
+    }
+
+    private HashSet<string> ComputeChangedSymbolIds(string snapshotId, HashSet<string> changedPaths)
+    {
+        if (changedPaths.Count == 0)
+            return new HashSet<string>();
+
+        var pathToVersion = _store.GetDocumentVersionIdsByPath(snapshotId);
+        var versionIds = new HashSet<string>(
+            changedPaths
+                .Where(p => pathToVersion.ContainsKey(p))
+                .Select(p => pathToVersion[p]));
+
+        if (versionIds.Count == 0)
+            return new HashSet<string>();
+
+        return new HashSet<string>(_store.GetSymbolIdsByDocumentVersionIds(snapshotId, versionIds));
     }
 
 }

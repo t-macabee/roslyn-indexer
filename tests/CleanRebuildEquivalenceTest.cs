@@ -10,6 +10,7 @@ using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Build.Locator;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace Lurp.Storage.Tests;
@@ -298,7 +299,14 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
                 AssertEqual(annB[i], annC[i]);
             }
 
-            Console.WriteLine("    Symbols, edges, diagnostics, annotations: all match.");
+            // FTS row count equivalence: after incremental, symbol_fts and source_fts
+            // row counts must equal what a clean rebuild produces.
+            var ftsCountsB = GetFtsCounts(snapshotB);
+            var ftsCountsC = GetFtsCounts(snapshotC);
+            Assert.Equal(ftsCountsC.SourceRows, ftsCountsB.SourceRows);
+            Assert.Equal(ftsCountsC.SymbolRows, ftsCountsB.SymbolRows);
+
+            Console.WriteLine("    Symbols, edges, diagnostics, annotations, FTS rows: all match.");
         }
         finally
         {
@@ -735,6 +743,22 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
         {
 
         }
+    }
+
+    private (int SourceRows, int SymbolRows) GetFtsCounts(string snapshotId)
+    {
+        using var conn = new SqliteConnection($"Data Source={_dbPath}");
+        conn.Open();
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM source_fts WHERE snapshot_id = @id;";
+        cmd.Parameters.AddWithValue("@id", snapshotId);
+        var sourceRows = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+
+        cmd.CommandText = "SELECT COUNT(*) FROM symbol_fts WHERE snapshot_id = @id;";
+        var symbolRows = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+
+        return (sourceRows, symbolRows);
     }
 }
 

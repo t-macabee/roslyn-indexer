@@ -89,6 +89,96 @@ namespace Lurp.Workspace
             var fromEdges = _edgeStore.GetEdges(fromSnapshotId);
             var toEdges = _edgeStore.GetEdges(toSnapshotId);
 
+            DiffEdges(fromEdges, toEdges, fromSnapshotId, toSnapshotId, changes);
+
+            return (changes, skippedComparisons);
+        }
+
+        public (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiff(string fromSnapshotId, string toSnapshotId, HashSet<string> changedPaths, HashSet<string> changedSymbolIds)
+        {
+            var changes = new List<SemanticChange>();
+            int skippedComparisons = 0;
+
+            if (changedSymbolIds.Count == 0)
+                return (changes, skippedComparisons);
+
+            var fromSymbols = GetSymbolIdsInSnapshot(fromSnapshotId);
+            var toSymbols = GetSymbolIdsInSnapshot(toSnapshotId);
+
+            var fromSet = new HashSet<string>(fromSymbols);
+            var toSet = new HashSet<string>(toSymbols);
+
+            // Only consider symbols in the changed neighborhood
+            foreach (var symbolId in toSymbols)
+            {
+                if (!changedSymbolIds.Contains(symbolId))
+                    continue;
+                if (!fromSet.Contains(symbolId))
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolAdded, symbolId, new { symbol_id = symbolId }));
+            }
+
+            foreach (var symbolId in fromSymbols)
+            {
+                if (!changedSymbolIds.Contains(symbolId))
+                    continue;
+                if (!toSet.Contains(symbolId))
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRemoved, symbolId, new { symbol_id = symbolId }));
+            }
+
+            var common = fromSet.Intersect(toSet).Where(id => changedSymbolIds.Contains(id)).ToList();
+
+            foreach (var symbolId in common)
+            {
+                var fromInfo = _declarationStore.GetSymbolInfo(symbolId, fromSnapshotId);
+                var toInfo = _declarationStore.GetSymbolInfo(symbolId, toSnapshotId);
+
+                if (fromInfo == null || toInfo == null)
+                {
+                    skippedComparisons++;
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.ComparisonUnavailable, symbolId,
+                        new { reason = $"Symbol info missing: from={(fromInfo == null ? "missing" : "present")}, to={(toInfo == null ? "missing" : "present")}" }));
+                    continue;
+                }
+
+                if (!string.Equals(fromInfo.FullyQualifiedName, toInfo.FullyQualifiedName, StringComparison.Ordinal) &&
+                    fromInfo.SymbolId.DocCommentId == toInfo.SymbolId.DocCommentId)
+                {
+                    var fromSimple = GetSimpleName(fromInfo.FullyQualifiedName);
+                    var toSimple = GetSimpleName(toInfo.FullyQualifiedName);
+                    var fromContainer = GetContainer(fromInfo.FullyQualifiedName);
+                    var toContainer = GetContainer(toInfo.FullyQualifiedName);
+
+                    if (fromSimple != toSimple)
+                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRenamed, symbolId, new { before = fromInfo.FullyQualifiedName, after = toInfo.FullyQualifiedName }));
+
+                    if (fromContainer != toContainer)
+                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolMoved, symbolId, new { before = fromContainer, after = toContainer }));
+                }
+
+                var metaChanges = CompareMetadata(symbolId, fromInfo.MetadataJson, toInfo.MetadataJson, fromSnapshotId, toSnapshotId);
+                changes.AddRange(metaChanges);
+
+                var (sourceChanges, sourceSkipped) = CompareSource(symbolId, fromSnapshotId, toSnapshotId);
+                changes.AddRange(sourceChanges);
+                skippedComparisons += sourceSkipped;
+            }
+
+            // Edge diff scoped to changed-symbol neighborhood:
+            // only consider edges where source or target is in changedSymbolIds.
+            var fromEdges = _edgeStore.GetEdges(fromSnapshotId)
+                .Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId))
+                .ToList();
+            var toEdges = _edgeStore.GetEdges(toSnapshotId)
+                .Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId))
+                .ToList();
+
+            DiffEdges(fromEdges, toEdges, fromSnapshotId, toSnapshotId, changes);
+
+            return (changes, skippedComparisons);
+        }
+
+        private void DiffEdges(List<EdgeRecord> fromEdges, List<EdgeRecord> toEdges, string fromSnapshotId, string toSnapshotId, List<SemanticChange> changes)
+        {
             var fromEdgeSet = new HashSet<(string source, string target, string kind)>(fromEdges.Select(e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind)));
             var toEdgeSet = new HashSet<(string source, string target, string kind)>(toEdges.Select(e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind)));
 
@@ -109,8 +199,6 @@ namespace Lurp.Workspace
                     changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.EdgeRemoved, edge.SourceSymbolId, new { source = edge.SourceSymbolId, target = edge.TargetSymbolId, kind = edge.Kind }));
                 }
             }
-
-            return (changes, skippedComparisons);
         }
 
         private List<string> GetSymbolIdsInSnapshot(string snapshotId)
