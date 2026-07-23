@@ -86,6 +86,10 @@ namespace Lurp.Workspace
                 skippedComparisons += sourceSkipped;
             }
 
+            // Heuristic rename detection: match symbol_removed + symbol_added
+            // pairs with the same simple name and kind but different DocCommentIds.
+            DetectRenames(changes, fromSnapshotId, toSnapshotId);
+
             var fromEdges = _edgeStore.GetEdges(fromSnapshotId);
             var toEdges = _edgeStore.GetEdges(toSnapshotId);
 
@@ -163,6 +167,10 @@ namespace Lurp.Workspace
                 skippedComparisons += sourceSkipped;
             }
 
+            // Heuristic rename detection: match symbol_removed + symbol_added
+            // pairs with the same simple name and kind but different DocCommentIds.
+            DetectRenames(changes, fromSnapshotId, toSnapshotId);
+
             // Edge diff scoped to changed-symbol neighborhood:
             // only consider edges where source or target is in changedSymbolIds.
             var fromEdges = _edgeStore.GetEdges(fromSnapshotId)
@@ -175,6 +183,82 @@ namespace Lurp.Workspace
             DiffEdges(fromEdges, toEdges, fromSnapshotId, toSnapshotId, changes);
 
             return (changes, skippedComparisons);
+        }
+
+        private void DetectRenames(List<SemanticChange> changes, string fromSnapshotId, string toSnapshotId)
+        {
+            var removed = changes.Where(c => c.ChangeType == ChangeType.SymbolRemoved).ToList();
+            var added = changes.Where(c => c.ChangeType == ChangeType.SymbolAdded).ToList();
+
+            if (removed.Count == 0 || added.Count == 0)
+                return;
+
+            var removedBySimpleName = new Dictionary<string, List<(SemanticChange Change, IndexedSymbolInfo? Info)>>(StringComparer.Ordinal);
+            foreach (var change in removed)
+            {
+                var info = _declarationStore.GetSymbolInfo(change.SymbolId, fromSnapshotId);
+                var simpleName = GetSimpleName(info?.FullyQualifiedName);
+                if (string.IsNullOrEmpty(simpleName))
+                    continue;
+
+                if (!removedBySimpleName.TryGetValue(simpleName, out var list))
+                {
+                    list = [];
+                    removedBySimpleName[simpleName] = list;
+                }
+                list.Add((change, info));
+            }
+
+            var addedBySimpleName = new Dictionary<string, List<(SemanticChange Change, IndexedSymbolInfo? Info)>>(StringComparer.Ordinal);
+            foreach (var change in added)
+            {
+                var info = _declarationStore.GetSymbolInfo(change.SymbolId, toSnapshotId);
+                var simpleName = GetSimpleName(info?.FullyQualifiedName);
+                if (string.IsNullOrEmpty(simpleName))
+                    continue;
+
+                if (!addedBySimpleName.TryGetValue(simpleName, out var list))
+                {
+                    list = [];
+                    addedBySimpleName[simpleName] = list;
+                }
+                list.Add((change, info));
+            }
+
+            var matchedRemoved = new HashSet<string>();
+            var matchedAdded = new HashSet<string>();
+
+            foreach (var (simpleName, removedList) in removedBySimpleName)
+            {
+                if (!addedBySimpleName.TryGetValue(simpleName, out var addedList))
+                    continue;
+
+                foreach (var removedEntry in removedList)
+                {
+                    if (removedEntry.Info == null || matchedRemoved.Contains(removedEntry.Change.SymbolId))
+                        continue;
+
+                    foreach (var addedEntry in addedList)
+                    {
+                        if (addedEntry.Info == null || matchedAdded.Contains(addedEntry.Change.SymbolId))
+                            continue;
+
+                        if (removedEntry.Info.Kind == addedEntry.Info.Kind)
+                        {
+                            changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRenamed,
+                                removedEntry.Change.SymbolId,
+                                new { before = removedEntry.Info.FullyQualifiedName, after = addedEntry.Info.FullyQualifiedName }));
+                            matchedRemoved.Add(removedEntry.Change.SymbolId);
+                            matchedAdded.Add(addedEntry.Change.SymbolId);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            changes.RemoveAll(c =>
+                (c.ChangeType == ChangeType.SymbolRemoved && matchedRemoved.Contains(c.SymbolId)) ||
+                (c.ChangeType == ChangeType.SymbolAdded && matchedAdded.Contains(c.SymbolId)));
         }
 
         private void DiffEdges(List<EdgeRecord> fromEdges, List<EdgeRecord> toEdges, string fromSnapshotId, string toSnapshotId, List<SemanticChange> changes)

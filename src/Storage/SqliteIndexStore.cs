@@ -142,8 +142,12 @@ namespace Lurp.Storage
             { EnsureOpen(); _symbols!.DeleteSnapshotSymbolsBySymbolIds(snapshotId, symbolIds); }
         public List<string> GetSymbolIdsInSnapshot(string snapshotId)
             { EnsureOpen(); return _symbols!.GetSymbolIdsInSnapshot(snapshotId); }
+        public void DeleteIncompleteSnapshots()
+            { EnsureOpen(); _pruner!.DeleteIncompleteSnapshots(); }
         public void PruneOldSnapshots(int keep = 3)
             { EnsureOpen(); _pruner!.PruneOldSnapshots(keep); }
+        public void DeleteSnapshotData(string snapshotId)
+            { EnsureOpen(); _pruner!.DeleteSnapshotData(snapshotId); }
         public void SaveTimings(string snapshotId, IEnumerable<SnapshotTimingRow> timings)
             { EnsureOpen(); _timings!.SaveTimings(snapshotId, timings); }
         public List<SnapshotTimingRow> GetTimings(string snapshotId)
@@ -206,6 +210,8 @@ namespace Lurp.Storage
             { EnsureOpen(); _edgeStore!.DeleteOrphanEdges(snapshotId); }
         public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors)
             { EnsureOpen(); _edgeStore!.UpsertExtractors(extractors); }
+        public bool HasStaleExtractorVersions(string snapshotId)
+            { EnsureOpen(); return _edgeStore!.HasStaleExtractorVersions(snapshotId); }
 
         // ── ISearchStore ───────────────────────────────────────────────────
 

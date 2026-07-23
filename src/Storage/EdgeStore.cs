@@ -478,6 +478,18 @@ public sealed class EdgeStore : IEdgeStore
         }
     }
 
+    public bool HasStaleExtractorVersions(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT COUNT(*) FROM edges
+            WHERE snapshot_id = @sid
+            AND extractor_version NOT IN (SELECT version FROM extractors);
+        ";
+        command.Parameters.AddWithValue("@sid", snapshotId);
+        return (long)command.ExecuteScalar()! > 0;
+    }
+
     private static List<EdgeRecord> ReadEdgeRecords(SqliteCommand command)
     {
         var results = new List<EdgeRecord>();

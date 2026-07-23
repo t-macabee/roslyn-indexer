@@ -67,6 +67,46 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         }
     }
 
+    internal void DeleteIncompleteSnapshots()
+    {
+        using var listCmd = _connection.CreateCommand();
+        listCmd.CommandText = "SELECT snapshot_id FROM snapshots WHERE status = 'in_progress';";
+        var snapshotIds = new List<string>();
+        using (var reader = listCmd.ExecuteReader())
+        {
+            while (reader.Read())
+                snapshotIds.Add(reader.GetString(0));
+        }
+
+        if (snapshotIds.Count == 0)
+            return;
+
+        using var transaction = _connection.BeginTransaction();
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.Transaction = transaction;
+
+            foreach (var sid in snapshotIds)
+            {
+                DeleteSnapshotData(cmd, sid);
+            }
+
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    internal void DeleteSnapshotData(string snapshotId)
+    {
+        using var cmd = _connection.CreateCommand();
+        DeleteSnapshotData(cmd, snapshotId);
+    }
+
     private static void DeleteSnapshotData(SqliteCommand cmd, string snapshotId)
     {
         string[] tables =
@@ -101,6 +141,13 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             );
         ";
         cmd.Parameters.Clear();
+        cmd.ExecuteNonQuery();
+
+        // Clean up orphaned symbols no longer referenced by any declaration
+        cmd.CommandText = @"
+            DELETE FROM symbols
+            WHERE symbol_id NOT IN (SELECT DISTINCT symbol_id FROM declarations);
+        ";
         cmd.ExecuteNonQuery();
 
         cmd.CommandText = "DELETE FROM semantic_changes WHERE from_snapshot_id = @sid OR to_snapshot_id = @sid;";

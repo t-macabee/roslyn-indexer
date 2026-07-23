@@ -75,6 +75,18 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         // Populate extractor registry (idempotent — no-op on re-runs)
         _store.UpsertExtractors(ExtractorRegistry.All);
 
+        // Check for stale extractor versions in the previous snapshot before
+        // copy-forward.  If any edge carries an extractor_version not present
+        // in the current registry, the copied-forward data would be stale and
+        // a full rebuild is required.
+        if (_store.HasStaleExtractorVersions(previousSnapshotId))
+        {
+            _store.DeleteSnapshotData(newSnapshotIdStr);
+            throw new InvalidOperationException(
+                "Extractor version staleness detected — some edges in the previous snapshot " +
+                "reference extractor versions not in the current registry. Full rebuild required.");
+        }
+
         int totalDeclarations = 0;
         int totalEdges = 0;
         int totalDiagnostics = 0;
@@ -110,7 +122,11 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"ERROR: Incremental index failed, snapshot {newSnapshotIdStr} left in 'in_progress' state: {ex.Message}");
+            // Compensating delete: clean up partial snapshot data on failure
+            // so no orphaned in_progress snapshot remains.
+            try { _store.DeleteSnapshotData(newSnapshotIdStr); }
+            catch { /* best-effort cleanup */ }
+            Console.Error.WriteLine($"ERROR: Incremental index failed mid-operation, snapshot {newSnapshotIdStr} cleaned up: {ex.Message}");
             throw;
         }
 

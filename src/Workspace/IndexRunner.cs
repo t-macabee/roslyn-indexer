@@ -59,27 +59,36 @@ public static class IndexRunner
             }
             else
             {
-                var incrementalIndexer = new IncrementalIndexer(store, gitRoot, solutionPath, outputDir, skipAdapters, jsonExportPath);
-                var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest);
+                try
+                {
+                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, solutionPath, outputDir, skipAdapters, jsonExportPath);
+                    var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest);
 
-                Console.WriteLine();
-                Console.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
-                Console.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
-                Console.WriteLine($"  Changed documents: {result.ChangedDocumentCount}");
-                Console.WriteLine($"  Declarations:      {result.DeclarationsExtracted}");
-                Console.WriteLine($"  Edges:             {result.EdgesExtracted}");
-                Console.WriteLine($"  Diagnostics:       {result.DiagnosticsExtracted}");
-                Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
-                Console.Write("Pruning old snapshots... ");
+                    Console.WriteLine();
+                    Console.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
+                    Console.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
+                    Console.WriteLine($"  Changed documents: {result.ChangedDocumentCount}");
+                    Console.WriteLine($"  Declarations:      {result.DeclarationsExtracted}");
+                    Console.WriteLine($"  Edges:             {result.EdgesExtracted}");
+                    Console.WriteLine($"  Diagnostics:       {result.DiagnosticsExtracted}");
+                    Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
+                    Console.Write("Pruning old snapshots... ");
 
-                store.PruneOldSnapshots(keep: 3);
+                    store.DeleteIncompleteSnapshots();
+                    store.PruneOldSnapshots(keep: 3);
 
-                Console.WriteLine("done.");
+                    Console.WriteLine("done.");
 
-                totalSw.Stop();
+                    totalSw.Stop();
 
-                Console.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
-                return;
+                    Console.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
+                    return;
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("Extractor version staleness"))
+                {
+                    Console.WriteLine($"Stale extractor versions detected. Falling back to full rebuild.");
+                    strategy = "full";
+                }
             }
         }
 
@@ -95,6 +104,7 @@ public static class IndexRunner
 
         Console.Write("Pruning old snapshots... ");
 
+        store.DeleteIncompleteSnapshots();
         store.PruneOldSnapshots(keep: 3);
 
         Console.WriteLine("done.");

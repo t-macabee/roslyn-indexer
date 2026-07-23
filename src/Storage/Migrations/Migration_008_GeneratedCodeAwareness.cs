@@ -10,26 +10,32 @@ namespace Lurp.Storage.Migrations
         {
             using var command = connection.CreateCommand();
 
-            try
+            var existingColumns = GetColumnNames(command, "declarations");
+
+            if (!existingColumns.Contains("is_generated"))
             {
                 command.CommandText = @"ALTER TABLE declarations ADD COLUMN is_generated INTEGER NOT NULL DEFAULT 0;";
                 command.ExecuteNonQuery();
             }
-            catch (SqliteException)
-            {
-            }
 
-            try
+            if (!existingColumns.Contains("generator_identity"))
             {
                 command.CommandText = @"ALTER TABLE declarations ADD COLUMN generator_identity TEXT;";
                 command.ExecuteNonQuery();
             }
-            catch (SqliteException)
-            {
-            }
 
             command.CommandText = @"CREATE INDEX IF NOT EXISTS idx_declarations_generated ON declarations(is_generated);";
             command.ExecuteNonQuery();
+        }
+
+        private static HashSet<string> GetColumnNames(SqliteCommand command, string tableName)
+        {
+            command.CommandText = $"PRAGMA table_info({tableName});";
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                columns.Add(reader.GetString(1));
+            return columns;
         }
     }
 }

@@ -19,7 +19,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         if (affectedProjectNames.Count == 0)
             return 0;
 
-        return await ProcessCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames);
+        return await ProcessCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames, affectedPaths);
     }
 
     private HashSet<string> FindAffectedDocPaths(string previousSnapshotId, HashSet<string> changedPaths)
@@ -68,10 +68,39 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         return affectedProjectNames;
     }
 
-    private async Task<int> ProcessCompilationsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedProjectNames)
+    private async Task<int> ProcessCompilationsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedProjectNames, HashSet<string> affectedDocPaths)
     {
-        var affectedProjectPaths = CollectProjectDocPaths(solution, affectedProjectNames);
-        _store.DeleteEdgesByDocumentPaths(newSnapshotId, affectedProjectPaths);
+        // Compute per-project affected absolute paths for scoped re-extraction
+        var affectedAbsPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var rootDir = Path.GetFullPath(_gitRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        foreach (var relPath in affectedDocPaths)
+            affectedAbsPaths.Add(Path.GetFullPath(Path.Combine(rootDir, relPath)).Replace('\\', '/'));
+
+        var perProjectAffectedPaths = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var project in solution.Projects)
+        {
+            if (!affectedProjectNames.Contains(project.Name))
+                continue;
+            var projectAffected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var doc in project.Documents)
+            {
+                if (doc.FilePath == null) continue;
+                var normalized = doc.FilePath.Replace('\\', '/');
+                if (affectedAbsPaths.Contains(normalized))
+                    projectAffected.Add(normalized);
+            }
+            perProjectAffectedPaths[project.Name] = projectAffected;
+        }
+
+        // Only delete edges for the affected documents within each project,
+        // not the entire project's documents.
+        var allAffectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var projectPaths in perProjectAffectedPaths.Values)
+        {
+            foreach (var path in projectPaths)
+                allAffectedPaths.Add(path);
+        }
+        _store.DeleteEdgesByDocumentPaths(newSnapshotId, allAffectedPaths);
 
         var crossDocCompilations = await LoadCompilationsAsync(solution, affectedProjectNames);
         var crossDocAssemblyIdentities = crossDocCompilations.Values
@@ -86,30 +115,22 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             if (!crossDocCompilations.TryGetValue(project.Name, out var compilation))
                 continue;
 
+            // Scope re-extraction to only the documents that have incoming
+            // edges from changed symbols, rather than re-extracting the
+            // entire compilation.
+            IReadOnlySet<string>? scopeDocs = null;
+            if (perProjectAffectedPaths.TryGetValue(project.Name, out var projectAffected) && projectAffected.Count > 0)
+                scopeDocs = projectAffected;
+
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, _skipAdapters,
                 logWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
-                logError: msg => Console.Error.Write($"  ERROR: {msg} "));
+                logError: msg => Console.Error.Write($"  ERROR: {msg} "),
+                scopeDocuments: scopeDocs);
             _store.SaveEdges(newSnapshotId, result.Edges);
             totalEdges += result.Edges.Count;
             Console.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");
         }
         return totalEdges;
-    }
-
-    private HashSet<string> CollectProjectDocPaths(Solution solution, HashSet<string> projectNames)
-    {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var project in solution.Projects)
-        {
-            if (!projectNames.Contains(project.Name))
-                continue;
-            foreach (var doc in project.Documents)
-            {
-                if (doc.FilePath == null) continue;
-                paths.Add(GetRelativePath(doc.FilePath, _gitRoot));
-            }
-        }
-        return paths;
     }
 
     private static async Task<Dictionary<string, Compilation>> LoadCompilationsAsync(Solution solution, HashSet<string> projectNames)

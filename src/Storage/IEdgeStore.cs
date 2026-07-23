@@ -34,5 +34,6 @@ namespace Lurp.Storage
         void DeleteOrphanEdges(string snapshotId);
 
         void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors);
+        bool HasStaleExtractorVersions(string snapshotId);
     }
 }

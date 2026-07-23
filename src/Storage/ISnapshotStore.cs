@@ -34,7 +34,9 @@ namespace Lurp.Storage
         void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds);
         List<string> GetSymbolIdsInSnapshot(string snapshotId);
 
+        void DeleteIncompleteSnapshots();
         void PruneOldSnapshots(int keep = 3);
+        void DeleteSnapshotData(string snapshotId);
 
         void SaveTimings(string snapshotId, IEnumerable<SnapshotTimingRow> timings);
         List<SnapshotTimingRow> GetTimings(string snapshotId);
