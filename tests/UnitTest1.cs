@@ -1262,6 +1262,39 @@ public class MigrationRunnerTests : IDisposable
             Assert.Empty(uncovered);
             store.Close();
         }
+
+        [Fact]
+        public void HasStaleExtractorVersions_DetectsVersionBump()
+        {
+            // Regression for T3 Finding 2: UpsertExtractors must prune superseded
+            // (name, version) rows, otherwise old versions never leave the
+            // extractors table and staleness can never be detected.
+            var store = CreateStore();
+            var snapshotId = "snap-extreg-bump";
+
+            store.UpsertExtractors([("Calls", "calls-v1", "desc")]);
+
+            store.SaveEdges(snapshotId, [new EdgeRecord
+            {
+                SourceSymbolId = "T:Src|asm1",
+                TargetSymbolId = "T:Tgt|asm1",
+                Kind = "Calls",
+                Provenance = "compiler_proved",
+                SnapshotId = snapshotId,
+                ExtractorVersion = "calls-v1",
+            }]);
+
+            Assert.False(store.HasStaleExtractorVersions(snapshotId),
+                "Edges should not be stale immediately after being written with the current version.");
+
+            // Simulate a version bump: the extractor registry now reports calls-v2.
+            store.UpsertExtractors([("Calls", "calls-v2", "desc")]);
+
+            Assert.True(store.HasStaleExtractorVersions(snapshotId),
+                "Edges written with a superseded extractor version must be detected as stale after a version bump.");
+
+            store.Close();
+        }
     }
 
     public class B0ExpansionTests : IDisposable

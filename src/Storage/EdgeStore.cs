@@ -454,6 +454,19 @@ public sealed class EdgeStore : IEdgeStore
 
             foreach (var (name, version, description) in extractors)
             {
+                // Prune superseded versions of this extractor so extractor_version
+                // staleness checks (HasStaleExtractorVersions) can distinguish
+                // "current" from "historical" — otherwise old version strings
+                // never leave the table and staleness can never be detected.
+                command.CommandText = @"
+                    DELETE FROM extractors
+                    WHERE name = @name AND version != @version;
+                ";
+                command.Parameters.Clear();
+                command.Parameters.AddWithValue("@name", name);
+                command.Parameters.AddWithValue("@version", version);
+                command.ExecuteNonQuery();
+
                 command.CommandText = @"
                     INSERT INTO extractors (name, version, description)
                     SELECT @name, @version, @description

@@ -443,6 +443,7 @@ FodyWeavers.xsd
 .codeaudit/
 .output/
 .deepcode/
+.qwen/
 .deepcodeignore
 .qwenignore
 NDependOut/
